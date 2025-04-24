@@ -27,9 +27,9 @@ allSameFs = all(diff([info.SampleRate]) == 0);
 
 % Sample rate Test, set result & report
 if allSameFs == true
-    fprintf('All training samples have the same sample rate.\n')
+    fprintf('All audio files have the same sample rate.\n')
 else
-    error('Training samples found with non-standard sample rate. All samples must have the same sample rate.\n')
+    error('Audio files found with non-standard sample rate. All samples must have the same sample rate.\n')
 end
 
 % Get the consistent value for sample rate

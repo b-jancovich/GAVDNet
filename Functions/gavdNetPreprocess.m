@@ -1,7 +1,8 @@
-function features = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowDur, hopDur)
-%vadnetTunablePreprocess Preprocess audio for voice activity detection network
+function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowDur, hopDur, mask)
+%GAVDNETPREPROCESS Preprocess audio for general animal vocalization detection network
 %   This function generates a mel spectrogram from the audio input, audioIn, 
-%   that can be fed to the pretrained network returned by the vadnet function. 
+%   that can be fed to the pretrained network. If a mask is provided, it also
+%   transforms the mask from audio sample domain to spectrogram time-bin domain.
 %   
 %   Inputs:
 %   x           = the signal to preprocess
@@ -9,21 +10,35 @@ function features = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowDur, h
 %   fsTarget    = the target sample rate for resampling 'x' (Hz)
 %   bandwidth   = the [min, max] frequency range of interest (Hz)
 %   windowDur   = the duration of the window function in the STFT (s)  
-%   hopDur      = the duration of the window hop in the STFT (s)   
+%   hopDur      = the duration of the window hop in the STFT (s)
+%   mask        = (optional) binary mask in audio sample domain  
 % 
 %   Outputs:
-%   features    = The spectrogram, returned as a 40-by-T array, where T is the number of
-%               time bins, dependent on windowDur, hopDur and the length of x.
+%   features      = The spectrogram, returned as a 40-by-T array, where T is the number of
+%                   time bins, dependent on windowDur, hopDur and the length of x.
+%   transformedMask = (optional) Mask transformed to spectrogram time-bin domain
 %
+% Ben Jancovich, 2024
+% Centre for Marine Science and Innovation
+% School of Biological, Earth and Environmental Sciences
+% University of New South Wales, Sydney, Australia
 %
 
 arguments
-    x {validateattributes(x,{'single','double'},{'nonempty','vector','real','finite'},'vadnetLFPreprocess','audioIn')}
-    fsIn {validateattributes(fsIn,{'single','double'},{'nonempty','scalar','real','finite','positive'},'vadnetLFPreprocess','fsIn')}
-    fsTarget {validateattributes(fsTarget,{'single','double'},{'nonempty','scalar','real','finite','positive'},'vadnetLFPreprocess','fsTarget')}
-    bandwidth {validateattributes(bandwidth,{'single','double'},{'nonempty','vector','real','finite','positive'},'vadnetLFPreprocess','bandwidth')}
-    windowDur {validateattributes(windowDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'vadnetLFPreprocess','windowDur')}
-    hopDur {validateattributes(hopDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'vadnetLFPreprocess','hopDur')}
+    x {validateattributes(x,{'single','double'},{'nonempty','vector','real','finite'},'gavdNetPreprocess','audioIn')}
+    fsIn {validateattributes(fsIn,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','fsIn')}
+    fsTarget {validateattributes(fsTarget,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','fsTarget')}
+    bandwidth {validateattributes(bandwidth,{'single','double'},{'nonempty','vector','real','finite','positive'},'gavdNetPreprocess','bandwidth')}
+    windowDur {validateattributes(windowDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','windowDur')}
+    hopDur {validateattributes(hopDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','hopDur')}
+    mask = [] % Optional mask parameter
+end
+
+% Validate mask dimensions if provided
+if ~isempty(mask)
+    if numel(mask) ~= numel(x)
+        error('gavdNetPreprocess:maskSizeMismatch', 'Mask must have the same dimensions as the audio input');
+    end
 end
 
 % Get Fs of input from GPU
@@ -39,13 +54,14 @@ end
 % Calculate STFT params at target Fs
 windowLen = windowDur * fsTarget;
 hopLen = hopDur * fsTarget;
+overlapLen = windowLen - hopLen;
 
 % Set the FFT length at 2 * the next power of 2 larger than window length 
 FFTLen = 4 * 2^(ceil(log2(windowLen)));
 
 % Error if signal is less than one window + one hop.
 % With padding, this means the minimum number of frames output is 4.
-coder.internal.errorIf(numel(xx)<(windowLen+hopLen),'audio:vadnet:SignalTooShort')
+coder.internal.errorIf(numel(xx)<(windowLen+hopLen),'audio:gavdnet:SignalTooShort')
 
 % Compute the spectrogram
 spec = icenteredPowerSTFT(xx, windowLen, hopLen, FFTLen);
@@ -55,6 +71,24 @@ SmeldB = imelSpectrogram(spec, fsTarget, FFTLen, bandwidth);
 
 % Standardize to zero mean and unity standard deviation
 features = istandardize(SmeldB);
+
+% Process mask if provided
+transformedMask = [];
+if ~isempty(mask)
+    % Resample mask if sample rate changes
+    if fsIn~=fsTarget
+        maskResamp = cast(resample(double(mask(:)),fsTarget,double(fsIn)),like=mask);
+    else
+        maskResamp = mask(:);
+    end
+    
+    % Zero pad to match the features (same padding as in STFT)
+    padLen = round(windowLen/2);
+    maskPadded = [zeros(padLen, 1, like=maskResamp); maskResamp; zeros(padLen, 1, like=maskResamp)];
+    
+    % Buffer the mask to match the spectrogram time bins
+    transformedMask = mode(buffer(maskPadded, windowLen, overlapLen, "nodelay"), 1);
+end
 
 end
 

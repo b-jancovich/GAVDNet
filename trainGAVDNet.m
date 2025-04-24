@@ -29,16 +29,17 @@
 %   1. Load and preprocess clean vocalization samples
 %   2. Create augmented versions with various distortions
 %   3. Construct synthetic training sequences by mixing clean samples with noise
-%   4. Extract spectrogram features using avdnetPreprocess
+%   4. Extract spectrogram features using gavdnetPreprocess
 %   5. Apply transfer learning to the pretrained VAD network
 %   6. Save the trained model with metadata
 %
 % REQUIREMENTS:
-%   - MATLAB R2023a or later
+%   - MATLAB R2024a or later
 %   - Audio Toolbox
 %   - Deep Learning Toolbox
 %   - Parallel Computing Toolbox (recommended for speed)
-%   - customAudioAugmenter
+%   - customAudioAugmenter github repository synced and in the same git
+%   root folder as the GAVDNet repo.
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
@@ -57,6 +58,7 @@ clear persistent
 % Path to the config file:
 configPath = "C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m";
 
+plotting = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
@@ -65,8 +67,9 @@ configPath = "C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m";
 % Add dependencies to path
 run(configPath) % Load config file
 projectRoot = pwd;
-[git_root_path, ~, ~] = fileparts(projectRoot);
-addpath(fullfile(git_root_path, 'customAudioAugmenter'));
+[gitRoot, ~, ~] = fileparts(projectRoot);
+addpath(fullfile(projectRoot, "Functions"))
+addpath(fullfile(gitRoot, 'customAudioAugmenter'));
 
 %% Start logging
 % 
@@ -104,7 +107,8 @@ if size(dir(fullfile(sequencesPath, '*.mat')), 1) == 0
     fprintf('No pre-saved sequences found. Building new set.\n')
 else
     buildSequences = false;
-    fprintf('Found pre-saved sequences. Using existing sequences.\n')
+    fprintf('Found %g pre-saved sequences. Using existing sequences.\n', ....
+        size(dir(fullfile(sequencesPath, '*.mat')), 1))
 end
 
 % If the 'X and T' folders don't exist, or contain no mat files, 
@@ -130,6 +134,7 @@ else
         size(dir(fullfile(valXandTpath, '*.mat')), 1))
     fprintf('Using existing inputs and targets.\n')
 end
+fprintf('\n')
 
 %% Set up for GPU or CPU processing
 
@@ -169,14 +174,14 @@ if numGPUs > 0
     reset(gpu);
 
     useGPU = true;
-    disp('Audio datastore will output to GPU.')
+    disp('Datastores will output to GPU.')
 else
     % No GPU available
-    disp('AudioDatastore will output to CPU.');
+    disp('Datastores will output to CPU.');
     useGPU = false;
 end
 clear gpuInfo
-
+fprintf('\n')
 
 %% Load the noiseless sample(s)
 
@@ -191,6 +196,13 @@ if buildCleanSignals == true
     end
 end
 
+%% Get the sample rate of the noise library
+
+% Use this as the output sample rate of the clean samples
+fprintf('Checking noise library files are all at the same sample rate...\n')
+outputFs = validateTrainingDataFs(noise_library_path);
+fprintf('Noise library sample rate is %g Hz. Synthetic audio data will be built at this rate.\n\n', outputFs)
+
 %% Pre-process the noiseless sample(s)
 
 if buildCleanSignals == true
@@ -204,7 +216,6 @@ if buildCleanSignals == true
     end
     
     % Calculate Dynamic Range Compression Parameters based on signal analysis
-    compressorParams = struct();
     for i = 1:n_noiseless_samples
         compressorParams(i) = calculateCompressionParameters(noiseless_samples(i).preprocessedAudio,...
             target_dynamic_range);
@@ -233,9 +244,12 @@ end
 
 %% Build augmentation object(s)
 
-% Divide the total number of desired training samples by the number of
-% clean samples we have:
-n_augmented_copies = ceil(n_training_samples / n_noiseless_samples);
+% Estimate how many augmented samples we will need to generate the call sequences:
+n_augmented_Samples_total = estimateCleanSamplesNeeded(numSequences, sequenceDuration, ICI, ICI_variation);
+
+% calculate how many augmented copies per noiseless sample 
+% (round up to nearest 100)
+n_augmented_copies_per_noiseless_sample = 10^2 * ceil(ceil(n_augmented_Samples_total / n_noiseless_samples) / 10^2);
 
 % Number of years of data in noise library
 year_list = detect_year_range(1):1:detect_year_range(2);
@@ -266,7 +280,7 @@ for i = 1:n_noiseless_samples
     if buildCleanSignals == true
         % Build the augmenter, and set it to make "n_augmented_copies" per
         % noiseless sample:
-        noiseless_samples(i).augmenter = setupAugmenter(operatingFs, n_augmented_copies, ...
+        noiseless_samples(i).augmenter = setupAugmenter(operatingFs, n_augmented_copies_per_noiseless_sample, ...
             speedup_factor_range, noiseless_samples(i).pitch_shift_range_semitones,...
             distortionRange, source_velocity_range, lpf_cutoff_range, ...
             decayTimeRange, trans_loss_strength_range, trans_loss_density_range, ...
@@ -286,7 +300,7 @@ if buildCleanSignals == true
             noiseless_samples(i).compressedAudio, operatingFs);
     
         clean_signals = [clean_signals; augOut];
-        fprintf('Finished Generating %d augmented signals for noiseless sample %d.\n', n_augmented_copies, i)
+        fprintf('Finished Generating %d augmented signals for noiseless sample %d.\n', n_augmented_copies_per_noiseless_sample, i)
     end
     for i = 1:height(clean_signals)   
         % Post process the signals (top & tail, DC filt, trim silence from start/end, 
@@ -311,9 +325,6 @@ clear clean_signals
 
 %% Initialise audioDataStores for clean signals & noise
     
-% Init the training/validation split
-split = [trainPercentage/100, (100-trainPercentage)/100];
-
 % If we haven't yet built the training & validation sequences and saved 
 % them to disk, set up datastores for the raw noise & call samples:
 if buildSequences == true
@@ -342,14 +353,6 @@ if buildSequences == true
         ads_cleanSignals.OutputEnvironment = 'cpu';
     end
 
-    % Split the full datasets into training data and validation data.
-    [ads_cleanSignals_train, ads_cleanSignals_validation] = splitEachLabel(...
-        ads_cleanSignals, split(1), split(2));
-    [ads_noise_train, ads_noise_validation] = splitEachLabel(...
-        ads_noise, split(1), split(2));
-    
-    clear ads_noise ads_cleanSignals
-
 else
     % Just get the sampling frequency:
     % Build audioDataStore containing training samples of the target sound
@@ -361,200 +364,142 @@ else
     clear ads_cleanSignals
 end
 
-%% Build Training & Validation Sequences from Clean Samples & Noise
+%% Build Sequences from clean samples & noise, saving them direct to disk
 
-% If we haven't yet built the training & validation sequences and saved 
-% them to disk, build them now:
 if buildSequences == true
-
-    % Set number of sequences for training and validation
-    numSequencesTrain = round(numSequences * split(1));
-    numSequencesVal = round(numSequences * split(2));
-
-    % Build sequences & masks by concatenating clean signals and random 
-    % durations of silence. Masks = 1 @ sample indices of clean signals:
-    disp('Building sequences of training samples...')
-    [audioSequencesTrain, masksTrainPerSample] = constructSequence(...
-        ads_cleanSignals_train, cleanSignals_fs, sequenceDuration, ...
-        numSequencesTrain, minSilenceSegment);
-    disp('Building sequences of validation samples...')
-    [audioSequencesVal, masksValPerSample] = constructSequence(...
-        ads_cleanSignals_validation, cleanSignals_fs, sequenceDuration,...
-        numSequencesVal, minSilenceSegment);
-    
-    % Add noise to training & validationsequences
-    disp('Adding noise to training sequences...')
-    [audioSeqsNoisyTrain, audioTrainSNRs] = addNoiseToSequences(audioSequencesTrain,...
-        ads_noise_train, snrRange, sequenceDuration, cleanSignals_fs);
-    disp('Adding noise to validation sequences...')
-    [audioSeqsNoisyVal, audioValSNRs] = addNoiseToSequences(audioSequencesVal, ...
-        ads_noise_validation, snrRange, sequenceDuration, cleanSignals_fs);
-    
-    % Display some sequences, masks, & noise-corrupted sequences 
-    if plotting == true
-        for i = 1:10
-            maskTrain = signalMask(gather(masksTrainPerSample{i}), SampleRate=cleanSignals_fs);
-            maskVal = signalMask(gather(masksValPerSample{i}), SampleRate=cleanSignals_fs);
-        
-            figure(1)
-            tiledlayout(2,2)
-            nexttile
-            plotsigroi(maskTrain, gather(audioSequencesTrain{i}), true)
-            title(["Train # ", num2str(i), " - Clean Sequence & Mask"])
-        
-            nexttile
-            plotsigroi(maskVal, gather(audioSequencesVal{i}), true)
-            title(["Validation # ", num2str(i), " - Clean Sequence & Mask"])
-        
-            nexttile
-            plotsigroi(maskTrain, gather(audioSeqsNoisyTrain{i}), true)
-            title(["Validation # ", num2str(i), " - Noise Corrrupted Sequence & Mask - SNR: ", num2str(audioTrainSNRs(i))])
-        
-            nexttile
-            plotsigroi(maskVal, gather(audioSeqsNoisyVal{i}), true)
-            title(["Validation # ", num2str(i), " - Noise Corrrupted Sequence & Mask - SNR: ", num2str(audioValSNRs(i))])
-        
-            waitforbuttonpress
-        end
-    end
-    
-    % Save both the sequences and the masks to mat files
-    save(fullfile(sequencesPath, 'trainingSequencesAndMasks.mat'), "audioSeqsNoisyTrain", "masksTrainPerSample", '-v7.3')
-    save(fullfile(sequencesPath, 'validationSequencesAndMasks.mat'), "audioSeqsNoisyVal", "masksValPerSample", '-v7.3')
-    
-else
-    % Load the pre-built training and validation sequences and masks
-    load(fullfile(sequencesPath, 'trainingSequencesAndMasks.mat'))
-    load(fullfile(sequencesPath, 'validationSequencesAndMasks.mat'))
+    % If we haven't already built the sequences of calls, build now
+    constructNoisySequences(ads_cleanSignals, ads_noise, numSequences, ...
+        sequenceDuration, snrRange, ICI, ICI_variation, ...
+        sequencesPath);
 end
 
-%% Extract features from training & validation data, & prep for network
+%% Set up datastores for pre-saved sequences
 
-% Convert STFT parameters from seconds to samples
+% Init the training/validation split
+split = [trainPercentage/100, (100-trainPercentage)/100];
+
+% Build sequence datastores
+[sequenceDS_train, sequenceDS_val] = createSequenceDatastore(sequencesPath, split);
+
+% Display some sequences, masks, & noise-corrupted sequences 
+if plotting == true
+    for i = 1:10
+        % Read a training sequence
+        [sequenceTrain, ~] = read(sequenceDS_train);
+        audioSeqTrain = sequenceTrain.audioSequence;
+        maskTrain = sequenceTrain.mask;
+
+        % Read a validation sequence
+        [sequenceVal, ~] = read(sequenceDS_val);
+        audioSeqVal = sequenceVal.audioSequence;
+        maskVal = sequenceVal.mask;
+
+        % Convert masks to sigroi mask format
+        maskTrain = signalMask(gather(maskTrain), SampleRate=outputFs);
+        maskVal = signalMask(gather(maskVal), SampleRate=outputFs);
+        
+        % Draw Figure
+        figure(1)
+        tiledlayout(1,2)
+        nexttile
+        plotsigroi(maskTrain, gather(audioSeqTrain), true)
+        title(["Train sequence # ", num2str(i), " - Noisy Sequence & Mask"])
+        nexttile
+        plotsigroi(maskVal, gather(audioSeqVal), true)
+        title(["Validation sequence # ", num2str(i), " - Noisy Sequence & Mask"])
+        waitforbuttonpress
+    end
+end
+
+% Reset datastores after plotting examples
+reset(sequenceDS_train)
+reset(sequenceDS_val)
+
+%% Extract features from training & validation data
+
+% Init STFT and framing parameters 
 windowLen = windowDur * fsTarget;
 hopLen = hopDur * fsTarget;
 overlapLen = windowLen - hopLen;
-analysisHopLength = windowLen - overlapLen;
-analysisTimeStepLength = round(analysisTimeStepDuration * cleanSignals_fs / analysisHopLength);
+frameHopLength = windowLen - overlapLen;
+frameStepLength = round(frameDuration * fsTarget / frameHopLength);
+
 % If we haven't already saved the final inputs and targets for training and
 % validation:
 if buildXandT == true
 
     % Training data
-    ntrainSequences = length(audioSeqsNoisyTrain);
+    ntrainSequences = length(sequenceDS_train.Files);
     reportInterval = floor(ntrainSequences / 10);
-    featuresTrain = cell(ntrainSequences, 1);
-    for i = 1:ntrainSequences
+    i = 1;
+    while hasdata(sequenceDS_train) 
+        % Retrieve audio and mask from sequence
+        [sequence, ~] = read(sequenceDS_train);
+        audio = sequence.audioSequence;
+        mask = sequence.mask;
+        
         % Run preprocessor:
-        featuresTrain{i} = gavdNetPreprocess(audioSeqsNoisyTrain{i}, cleanSignals_fs, fsTarget, bandwidth, windowDur, hopDur);
+        [XTrain, TTrain] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowDur, hopDur, mask);
     
-        if useGPU == true
-            % Move back to the CPU to save memory
-            featuresTrain{i} = gather(featuresTrain{i});
+        % Buffer training features into frames
+        XTrainBuffered = featureBuffer(XTrain, frameStepLength, ...
+            frameOverlapPercent);
+        
+        % Buffer training masks into frames
+        TTrainBuffered = featureBuffer(TTrain, frameStepLength, ...
+            frameOverlapPercent);
+
+        % Save train frame
+        for j = 1:numel(XTrainBuffered)
+            X = XTrainBuffered{j}; 
+            T = TTrainBuffered{j}; 
+            save(fullfile(trainXandTpath,sprintf('trainSeq_%05d_frame_%05d.mat', i, j)),...
+                 'X','T');
         end
-    
+
         % Report progress
         if mod(i, reportInterval) == 0
             fprintf('Completed preprocessing and feature extraction on training sequence %g of %g.\n', i, ntrainSequences)
         end
+        i = i+1;
     end
     
     % Validation data
-    nValSequences = length(audioSeqsNoisyVal);
+    nValSequences = length(sequenceDS_val.Files);
     reportInterval = floor(nValSequences / 10);
-    featuresVal = cell(nValSequences, 1);
-    for i = 1:nValSequences
+    i = 1;
+    while hasdata(sequenceDS_val) 
+        % Retrieve audio and mask from sequence
+        [sequence, ~] = read(sequenceDS_val);
+        audio = sequence.audioSequence;
+        mask = sequence.mask;
+        
         % Run preprocessor:
-        featuresVal{i} = gavdNetPreprocess(audioSeqsNoisyVal{i}, cleanSignals_fs, fsTarget, bandwidth, windowDur, hopDur);
-    
-        if useGPU == true
-            % Move back to the CPU to save memory
-            featuresVal{i} = gather(featuresVal{i});
+        [XVal, TVal] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowDur, hopDur, mask);
+
+        % Buffer training features into frames
+        XValBuffered = featureBuffer(XVal, frameStepLength, ...
+            frameOverlapPercent);
+        
+        % Buffer training masks into frames
+        TValBuffered = featureBuffer(TVal, frameStepLength, ...
+            frameOverlapPercent);
+
+        % Save train frame
+        for j = 1:numel(XValBuffered)
+            X = XValBuffered{j}; 
+            T = TValBuffered{j}; 
+            save(fullfile(valXandTpath,sprintf('valSeq_%05d_frame_%05d.mat', i, j)),...
+                 'X','T');
         end
-    
+
         % Report progress
         if mod(i, reportInterval) == 0
             fprintf('Completed preprocessing and feature extraction on validation sequence %g of %g.\n', i, nValSequences)
         end
+        i = i+1;
     end
-       
-    % The ground truth mask has elements that correspond to the original time 
-    % domain audio samples. Buffer the mask vectors so they correspond to the 
-    % spectrogram time bins instead:
-    maskTrainPerSamplePadded = cell(length(masksTrainPerSample), 1);
-    TTrain = cell(length(masksTrainPerSample), 1);
-    maskValPerSamplePadded = cell(length(masksValPerSample), 1);
-    TValidation = cell(length(masksValPerSample), 1);
-    for i = 1:length(masksTrainPerSample)
-        % Zero pad to match the features
-        maskTrainPerSamplePadded{i} = [zeros(floor(windowLen/2), 1); masksTrainPerSample{i}; zeros(ceil(windowLen/2), 1)];
-        
-        % Buffer to match the features
-        TTrain{i} = mode(buffer(maskTrainPerSamplePadded{i}, windowLen, overlapLen, "nodelay"), 1);
-    end
-    for i = 1:length(masksValPerSample)
-        % Zero pad to match the features
-        maskValPerSamplePadded{i} = [zeros(floor(windowLen/2), 1); masksValPerSample{i}; zeros(ceil(windowLen/2), 1)];
-    
-        % Buffer to match the features
-        TValidation{i} = mode(buffer(maskValPerSamplePadded{i}, windowLen, overlapLen, "nodelay"), 1);
-    end
-    
-    % Buffer the long sequences into shorter ones
-    XTrainBuffered = cell(length(featuresTrain), 1);
-    TTrainBuffered = cell(length(featuresTrain), 1);
-    XValBuffered = cell(length(featuresVal), 1);
-    TValBuffered = cell(length(TValidation), 1);
-    for i = 1:length(featuresTrain)
-    
-        % Buffer training features
-        XTrainBuffered{i} = featureBuffer(featuresTrain{i}, analysisTimeStepLength, ...
-            analysisTimeStepOverlapPercent);
-        
-        % Buffer training masks
-        TTrainBuffered{i} = featureBuffer(TTrain{i}, analysisTimeStepLength, ...
-            analysisTimeStepOverlapPercent);
-    end
-    for i = 1:length(featuresVal)
-        % Buffer validation features
-        XValBuffered{i} = featureBuffer(featuresVal{i}, analysisTimeStepLength, ...
-            analysisTimeStepOverlapPercent);
-        
-        % Buffer validation masks
-        TValBuffered{i} = featureBuffer(TValidation{i}, analysisTimeStepLength, ...
-            analysisTimeStepOverlapPercent);
-    end
-    
-    % Concatenate/unnest cells of training & validation data
-    [XTrainAll, TTrainAll] = concatenateTrainData(XTrainBuffered, TTrainBuffered);
-    [XValAll, TValAll] = concatenateTrainData(XValBuffered, TValBuffered);
-    
-    % Save train chunks
-    for i = 1:numel(XTrainAll)
-        X = XTrainAll{i}; 
-        T = TTrainAll{i}; 
-        save(fullfile(trainXandTpath,sprintf('trainChunk_%05d.mat', i)),...
-             'X','T');
-    
-        % Report progress
-        if mod(i, 1000) == 0
-            fprintf('Saved XTrain & TTrain sample %g of %g.\n', i, numel(XTrainAll))
-        end
-    end
-    
-    % Save validation chunks
-    for i = 1:numel(XValAll)
-        X = XValAll{i}; 
-        T = TValAll{i}; 
-        save(fullfile(valXandTpath,sprintf('valChunk_%05d.mat',i)),...
-             'X','T');
-        % Report progress
-        if mod(i, 1000) == 0
-            fprintf('Saved XValidation & TValidation sample %g of %g.\n', i, numel(XValAll))
-        end
-    end
-    
-    clear XTrainBuffered XValBuffered TTrainBuffered TValBuffered featuresVal featuresTrain TValidation
+
 end
 
 %% Set up datastores to allow access to on-disk training and validation data:
@@ -572,42 +517,63 @@ valDS = fileDatastore(valXandTpath, ...
     'ReadFcn', readMatFileFunction, ...
     'FileExtensions', '.mat');
 
+%% Prep output struct
 
-%% Ramdomly plot some training and validation samples & masks
+% Validation Frequency (iterations)
+numIterationsPerEpoch = ceil(numel(trainDS.Files) / miniBatchSize);
+valFreq = round(numIterationsPerEpoch / 10);
 
-% debug figure - show some sequences, masks, & noise-corrupted sequences 
+% Preprocessor parameters:
+model.preprocParams.fsSource = outputFs; % The final sample rate of the augmented call samples (Hz)
+model.preprocParams.fsTarget = fsTarget; % The sample rate at which the features are computed (Hz)
+model.preprocParams.bandwidth = bandwidth; % The frequency bandwidth of the features spectrograms [min, max] (Hz)
+model.preprocParams.windowDur = windowDur; % The duration of the window function used to compute the STFT (seconds)
+model.preprocParams.windowLen = windowLen; % The length of the window function used to compute the STFT (samples)
+model.preprocParams.hopDur = hopDur; % The duration of the window hop used to compute the STFT (seconds)
+model.preprocParams.hopLen = hopLen; % The length of the window hop used to compute the STFT (samples)
+model.preprocParams.overlapDur = overlapLen / cleanSignals_fs; % The duration of the window overlap used to compute the STFT (seconds)
+model.preprocParams.overlapLen = overlapLen; % The length of the window overlap used to compute the STFT (samples)
+model.preprocParams.overlapPerc = (overlapLen / windowLen) * 100; % The length of the window overlap used to compute the STFT (percent of window length)
 
-if plotting == true
-    for i = 1:30
-        idx = randi(length(XTrainAll));
-    
-        figure(2)
-        tiledlayout(2,1)
-        nexttile
-        imagesc(XTrainAll{idx})
-        set(gca, "YDir", "normal")
-        title(["Train # ", num2str(idx), " - Training Subsequence"])
-    
-        nexttile
-        plot(TTrainAll{idx})
-        set(gca, "YDir", "normal")
-        title(["Train # ", num2str(idx), " - Training Subsequence"])
-        ylim([-1.1, 1.1])
-    
-        waitforbuttonpress
-    end
-end
+% Training Data Construction:
+model.dataSynthesisParams.numSequences = numSequences; % The total number of training sequences built
+model.dataSynthesisParams.trainPercentage = trainPercentage; % The percentage of "numSequences" used for training (as opposed to validation)
+model.dataSynthesisParams.sequenceDuration = sequenceDuration; % The duration of the sequences (s)
+model.dataSynthesisParams.snrRange = snrRange; % Range of random SNRs in the synthetic sequences (dB)
+model.dataSynthesisParams.minSilenceSegment = minSilenceSegment; % Minimum random duration of silence between concatenated samples in a sequence (s)
+model.dataSynthesisParams.nNoiselessSamples = n_noiseless_samples;
+model.dataSynthesisParams.nAugmentedCleanSamples = n_augmented_Samples_total;
+model.dataSynthesisParams.nSamplesPerSequence = round(n_augmented_Samples_total/numSequences);
+model.dataSynthesisParams.speedupFactorRange = speedup_factor_range;
+model.dataSynthesisParams.pitchShiftRangeHz = [-max_down_shift_hz, max_up_shift_hz];
+model.dataSynthesisParams.distortionRange = distortionRange;
+model.dataSynthesisParams.dopplerSrcVelocityRange = source_velocity_range;
+model.dataSynthesisParams.lpfCutoffRange = lpf_cutoff_range;
+model.dataSynthesisParams.reverbDecayTimeRange = decayTimeRange;
+model.dataSynthesisParams.transmissionLossStrengthRange = trans_loss_strength_range;
+model.dataSynthesisParams.transmissionLossDensityRange = trans_loss_density_range;
+
+% Training Hyper-parameters:
+model.trainingHyperparams.miniBatchSize = miniBatchSize; % Number of training samples to run per training iterationmodel.
+model.trainingHyperparams.maxEpochs = maxEpochs; % Maximum number runs through the entire dataset
+model.trainingHyperparams.valPatience = valPatience; % Number of validations we allow a failure to improve before stopping training
+model.trainingHyperparams.valFreq = valFreq; % Frequency of validation tests (iterations)
+model.trainingHyperparams.initialLearnRate = lrInitial; % The learning rate schedule name
+model.trainingHyperparams.learnRateSchedule = "piecewise"; % The learning rate schedule name
+model.trainingHyperparams.learnRateDropPeriod = lrDropPeriod; % The period over which the learning rate drops (Epochs)
+model.trainingHyperparams.learnRateDropFactor = lrDropFac; % The factor by which the learning rate drops.
+
+% Training Sequence Chunking:
+model.sequenceChunking.frameDuration = frameDuration; % The duration of the overlapping spectrogram frames (seconds)
+model.sequenceChunking.frameStepLength = frameStepLength; % The length of the overlapping spectrogram frames (spectrogram time bins)
+model.sequenceChunking.frameOverlapPercent = frameOverlapPercent; % The overlap of the overlapping spectrogram frames (percent of frameDuration)
+model.sequenceChunking.frameHopLength = frameHopLength; % The length hop between overlapping spectrogram frames (spectrogram time bins)
+
 
 %% Memory Management & Cleanup Before Training
 
 % Clear intermediate variables that are no longer needed
-clear audioSequencesTrain audioSequencesVal % Original clean sequences
-clear audioSeqsNoisyTrain audioSeqsNoisyVal % Noisy sequences 
-clear masksTrainPerSample masksValPerSample % Original time domain labels
-clear maskTrainPerSamplePadded maskValPerSamplePadded % Padded labels
-clear featuresTrain % Raw extracted features
-clear XTrainBuffered TTrainBuffered % Buffered training data
-clear TTrain XTrainAll TTrainAll TValAll XValAll
+clearvars -except maxMemoryDeviceID trainDS valDS model gavdNetDataPath
 
 % Reset GPU memory if using GPU
 if gpuDeviceCount > 0
@@ -635,29 +601,26 @@ parpool('local');
 
 % Compact variables to reduce memory fragmentation
 disp('Memory cleanup completed, proceeding to training...');
+disp(newline)
 
 %% Training
 
-% Validation Frequency (iterations)
-numIterationsPerEpoch = ceil(numel(trainDS.Files) / miniBatchSize);
-valFreq = round(numIterationsPerEpoch / 8);
-
 % Set training options
 options = trainingOptions("adam", ...
-    InitialLearnRate = lrInitial, ...
-    LearnRateSchedule = "piecewise", ...
-    LearnRateDropPeriod = lrDropPeriod, ... 
-    LearnRateDropFactor = lrDropFac, ...
-    MiniBatchSize = miniBatchSize, ...
-    ValidationFrequency = valFreq, ...
+    InitialLearnRate = model.trainingHyperparams.initialLearnRate, ...
+    LearnRateSchedule = model.trainingHyperparams.learnRateSchedule, ...
+    LearnRateDropPeriod = model.trainingHyperparams.learnRateDropPeriod, ... 
+    LearnRateDropFactor = model.trainingHyperparams.learnRateDropFactor, ...
+    MiniBatchSize = model.trainingHyperparams.miniBatchSize, ...
+    ValidationFrequency = model.trainingHyperparams.valFreq, ...
     ValidationData = valDS, ...
-    ValidationPatience = valPatience, ...
+    ValidationPatience = model.trainingHyperparams.valPatience, ...
+    Shuffle = "every-epoch", ...
     ExecutionEnvironment = 'parallel-gpu',...
     Verbose = 1, ...
-    Plots="none", ...
-    MaxEpochs = maxEpochs, ...
+    Plots = "none", ...
+    MaxEpochs = model.trainingHyperparams.maxEpochs, ...
     OutputNetwork = "best-validation-loss");
-%     Shuffle = "every-epoch", ...
 
 % Load pretrained network
 net = audioPretrainedNetwork("vadnet");
@@ -671,59 +634,12 @@ disp('Training Complete.')
 
 disp('Saving model...')
 
-tsEnd = char(datetime("now", "Format", "dd-MMM-uuuu_HH-mm"));
-
-% Preprocessor parameters:
-model.preprocParams.fsSource = cleanSignals_fs; % The sample rate of the source audio for the call samples (Hz)
-model.preprocParams.fsTarget = fsTarget; % The sample rate at which the features are computed (Hz)
-model.preprocParams.bandwidth = bandwidth; % The frequency bandwidth of the features spectrograms [min, max] (Hz)
-model.preprocParams.windowDur = windowDur; % The duration of the window function used to compute the STFT (seconds)
-model.preprocParams.windowLen = windowLen; % The length of the window function used to compute the STFT (samples)
-model.preprocParams.hopDur = hopDur; % The duration of the window hop used to compute the STFT (seconds)
-model.preprocParams.hopLen = hopLen; % The length of the window hop used to compute the STFT (samples)
-model.preprocParams.overlapDur = overlapLen / cleanSignals_fs; % The duration of the window overlap used to compute the STFT (seconds)
-model.preprocParams.overlapLen = overlapLen; % The length of the window overlap used to compute the STFT (samples)
-model.preprocParams.overlapPerc = (overlapLen / windowLen) * 100; % The length of the window overlap used to compute the STFT (percent of window length)
-
-% Training Data Construction:
-model.dataSynthesisParams.numSequences = numSequences; % The total number of training sequences built
-model.dataSynthesisParams.trainPercentage = trainPercentage; % The percentage of "numSequences" used for training (as opposed to validation)
-model.dataSynthesisParams.sequenceDuration = sequenceDuration; % The duration of the sequences (s)
-model.dataSynthesisParams.snrRange = snrRange; % Range of random SNRs in the synthetic sequences (dB)
-model.dataSynthesisParams.minSilenceSegment = minSilenceSegment; % Minimum random duration of silence between concatenated samples in a sequence (s)
-model.dataSynthesisParams.nNoiselessSamples = n_noiseless_samples;
-model.dataSynthesisParams.nAugmentedCleanSamples = n_training_samples;
-model.dataSynthesisParams.nSamplesPerSequence = round(n_training_samples/numSequences);
-model.dataSynthesisParams.speedupFactorRange = speedup_factor_range;
-model.dataSynthesisParams.pitchShiftRangeHz = [-max_down_shift_hz, max_up_shift_hz];
-model.dataSynthesisParams.distortionRange = distortionRange;
-model.dataSynthesisParams.dopplerSrcVelocityRange = source_velocity_range;
-model.dataSynthesisParams.lpfCutoffRange = lpf_cutoff_range;
-model.dataSynthesisParams.reverbDecayTimeRange = decayTimeRange;
-model.dataSynthesisParams.transmissionLossStrengthRange = trans_loss_strength_range;
-model.dataSynthesisParams.transmissionLossDensityRange = trans_loss_density_range;
-
-% Training Hyper-parameters:
-model.trainingHyperparams.miniBatchSize = miniBatchSize; % Number of training samples to run per training iterationmodel.
-model.trainingHyperparams.maxEpochs = maxEpochs; % Maximum number runs through the entire dataset
-model.trainingHyperparams.valPatience = valPatience; % Number of validations we allow a failure to improve before stopping training
-model.trainingHyperparams.valFreq = valFreq; % Frequency of validation tests (iterations)
-model.trainingHyperparams.initialLearnRate = lrInitial; % The learning rate schedule name
-model.trainingHyperparams.learnRateSchedule = "piecewise"; % The learning rate schedule name
-model.trainingHyperparams.learnRateDropPeriod = lrDropPeriod; % The period over which the learning rate drops (Epochs)
-model.trainingHyperparams.learnRateDropFactor = lrDropFac; % The factor by which the learning rate drops.
-
-% Training Sequence Chunking:
-model.sequenceChunking.analysisTimeStepDuration = analysisTimeStepDuration; % The duration of the overlapping spectrogram chunks (seconds)
-model.sequenceChunking.analysisTimeStepLength = analysisTimeStepLength; % The length of the overlapping spectrogram chunks (spectrogram time bins)
-model.sequenceChunking.analysisTimeStepOverlapPercent = analysisTimeStepOverlapPercent; % The overlap of the overlapping spectrogram chunks (percent of analysisTimeStepDuration)
-model.sequenceChunking.analysisHopLength = analysisHopLength; % The length hop between overlapping spectrogram chunks (spectrogram time bins)
-
 % Training end timestamp
+tsEnd = char(datetime("now", "Format", "dd-MMM-uuuu_HH-mm"));
 model.trainingCompletionDateTime = tsEnd;
 
 % Save the model with embedded metadata
-modelName = ['AVDNet_trained_', tsEnd, '.mat'];
+modelName = ['GAVDNet_trained_', tsEnd, '.mat'];
 save(fullfile(gavdNetDataPath, modelName), "model");
 
 disp('Done.')
