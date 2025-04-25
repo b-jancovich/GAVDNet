@@ -1,8 +1,15 @@
 function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowDur, hopDur, mask)
 %GAVDNETPREPROCESS Preprocess audio for general animal vocalization detection network
 %   This function generates a mel spectrogram from the audio input, audioIn, 
-%   that can be fed to the pretrained network. If a mask is provided, it also
-%   transforms the mask from audio sample domain to spectrogram time-bin domain.
+%   that can be fed to the pretrained network. If a signal presence mask 
+%   is provided, it also transforms the mask from audio sample domain to 
+%   spectrogram time-bin domain for training purposes.
+%
+%   At inference, the 'mask' input can be handed a matlab vector of doubles
+%   containing 'datenum' serial date numbers that represent the date and 
+%   time indices of every audio sample in x. Like the mask, this will be
+%   buffered such that every element represents the date and time index 
+%   of the corresponding spectrogram time bin.
 %   
 %   Inputs:
 %   x           = the signal to preprocess

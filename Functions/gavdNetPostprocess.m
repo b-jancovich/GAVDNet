@@ -1,43 +1,64 @@
-function varargout = gavdNetPostprocess(audioIn, audioFs, probs, hopDur, options)
-%gavdNetPostprocess Postprocess frame-based animal vocalisation probabilities
-
+function varargout = vadnetPostprocess(audioIn,fs,probs,options)
+%vadnetPostprocess Postprocess frame-based VAD probabilities
 %   roi = vadnetPostprocess(audioIn,fs,probs) converts voice activity
 %   probability per frame to roi boundaries in samples. Specify audioIn and
 %   fs as the same values input to vadnetPreprocess. Specify probs as the
 %   value output from calling predict on vadnet.
 %
 %   roi = vadnetPostprocess(...,ActivationThreshold=AT) sets the threshold
-%   for starting a target sound segment. Specify ActivationThreshold as a scalar
+%   for starting a speech segment. Specify ActivationThreshold as a scalar
 %   in the range [0,1]. If unspecified, ActivationThreshold defaults to 0.5.
 %
 %   roi = vadnetPostprocess(...,DeactivationThreshold=DT) sets the
-%   threshold for ending a target sound segment. Specify DeactivationThreshold as
+%   threshold for ending a speech segment. Specify DeactivationThreshold as
 %   a scalar in the range [0,1]. If unspecified, DeactivationThreshold
 %   defaults to 0.25.
 %
 %   roi = vadnetPostprocess(...,ApplyEnergyVAD=AEVAD) specifies whether to
-%   apply an energy-based voice activity detector to the target sound regions
+%   apply an energy-based voice activity detector to the speech regions
 %   detected by the neural network. If unspecified, ApplyEnergyVAD defaults
 %   to false.
 %
-%   roi = vadnetPostprocess(...,MergeThreshold=MT) merges target sound regions
+%   roi = vadnetPostprocess(...,MergeThreshold=MT) merges speech regions
 %   that are separated by MT seconds or less. Specify MergeThreshold as a
 %   nonnegative scalar. If unspecified, MergeThreshold defaults to 0.25
 %   seconds.
 %
-%   roi = vadnetPostprocess(...,LengthThreshold=LT) removes target sound regions
+%   roi = vadnetPostprocess(...,LengthThreshold=LT) removes speech regions
 %   that have a duration of LT seconds or less. Specify LengthThreshold as
 %   a nonnegative scalar. If unspecified, LengthThreshold defaults to 0.25
 %   seconds.
 %
 %   vadnetPostprocess(...) with no output arguments displays a plot of the
-%   detected target sound regions in the input signal.
+%   detected speech regions in the input signal.
 %
+%   Example:
+%       % Read audio signal containing speech and music.
+%       [audioIn,fs] = audioread("MusicAndSpeech-16-mono-14secs.ogg");
+%
+%       % Preprocess the audio to extract a mel spectrogram.
+%       S = vadnetPreprocess(audioIn,fs);
+%
+%       % Create a vadnet network.
+%        net = audioPretrainedNetwork("vadnet");
+%
+%       % Get the probability of speech in each mel spectrum.
+%       probs = predict(net,S);
+%
+%       % Postprocess the predictions to determine VAD decisions. Call with
+%       % no output arguments to generate a plot of the decisions.
+%       vadnetPostprocess(audioIn,fs,probs)
+%
+% See also DETECTSPEECH, DETECTSPEECHNN, AUDIOPRETRAINEDNETWORK, VADNETPREPROCESS
+
+% Copyright 2022-2024 The MathWorks, Inc.
+
+%#codegen
+
 arguments
     audioIn (:,1) {validateattributes(audioIn,{'single','double'},{'nonempty','vector','real','finite'},'vadnetPostprocess','audioIn')}
-    audioFs (1,1) {validateattributes(audioFs,{'single','double'},{'positive','real','nonnan','finite'},'vadnetPostprocess','fs')}
+    fs (1,1) {validateattributes(fs,{'single','double'},{'positive','real','nonnan','finite'},'vadnetPostprocess','fs')}
     probs (:,1) {validateattributes(probs,{'single','double'},{'nonempty','vector','real','nonnan','finite'},'vadnetPostprocess','probs')}
-    hopDur
     options.ActivationThreshold (1,1) {validateattributes(options.ActivationThreshold,{'single','double'},{'scalar','<=',1,'>=',0},'vadnetPostprocess','ActivationThreshold')} = 0.5;
     options.DeactivationThreshold (1,1) {validateattributes(options.DeactivationThreshold,{'single','double'},{'scalar','<=',1,'>=',0},'vadnetPostprocess','DeactivationThreshold')} = 0.25;
     options.ApplyEnergyVAD (1,1) {mustBeNumericOrLogical} = false;
@@ -48,18 +69,18 @@ end
 % Parameters should not be on the GPU
 if isempty(coder.target)
     options = structfun(@gather,options,UniformOutput=false);
-    [audioFs,probs] = gather(audioFs,probs);
+    [fs,probs] = gather(fs,probs);
 end
 
-% % Time resolution (hop length) of vadnetPreprocess
-% hopDur = 0.01;
+% Time resolution (hop length) of vadnetPreprocess
+timeResolution = 0.01;
 
-% % Sample rate of intermediate representation input to network.
-% audioFs = 16e3;
+% Sample rate of intermediate representation input to network.
+expfs = 16e3;
 
 % Validate that the audio duration is consistent with the probability
 % vector
-expNumHops = floor(ceil(numel(audioIn)*audioFs/audioFs)/160) + 1;
+expNumHops = floor(ceil(numel(audioIn)*expfs/fs)/160) + 1;
 coder.internal.errorIf(expNumHops~=numel(probs), ...
     'audio:vadnet:InconsistentLengths', ...
     numel(audioIn),numel(probs),'vadnetPreprocess')
@@ -70,8 +91,8 @@ coder.internal.errorIf(options.DeactivationThreshold>=options.ActivationThreshol
     'audio:vadnet:InvalidActivationPair')
 
 % Convert thresholds in seconds to samples.
-options.MergeThreshold = isecond2sample(options.MergeThreshold,audioFs);
-options.LengthThreshold = isecond2sample(options.LengthThreshold,audioFs);
+options.MergeThreshold = isecond2sample(options.MergeThreshold,expfs);
+options.LengthThreshold = isecond2sample(options.LengthThreshold,expfs);
 
 % Create mask by applying activation and deactivation thresholds
 vadmask = iapplyThreshold(probs(:),options.ActivationThreshold,options.DeactivationThreshold);
@@ -80,14 +101,14 @@ vadmask = iapplyThreshold(probs(:),options.ActivationThreshold,options.Deactivat
 b1 = binmask2sigroi(vadmask);
 
 % Convert frame-based roi to sample-based roi
-boundaries = iframe2sample(b1,audioFs,hopDur);
+boundaries = iframe2sample(b1,fs,timeResolution);
 
 % Clip the final boundary to the number of original audio samples
 boundaries = min(boundaries,numel(audioIn));
 
 % Apply energy-based VAD if requested
 if options.ApplyEnergyVAD
-    boundaries = ienergyVAD(audioIn,audioFs,hopDur,boundaries,numel(probs(:)));
+    boundaries = ienergyVAD(audioIn,fs,timeResolution,boundaries,numel(probs(:)));
     boundaries = min(boundaries,numel(audioIn));
 end
 
@@ -111,12 +132,12 @@ sampleroi = b3;
 % Convenience plot if no output requested.
 switch nargout
     case 0
-        iconveniencePlot(audioIn,audioFs,audioFs,sampleroi,probs)
+        iconveniencePlot(audioIn,fs,expfs,sampleroi,probs)
     case 1
         varargout{1} = sampleroi;
     case 2
         varargout{1} = sampleroi;
-        varargout{2} = iframeprob2sampleprob(probs,audioFs,audioFs,numel(audioIn));
+        varargout{2} = iframeprob2sampleprob(probs,fs,expfs,numel(audioIn));
 end
 
 end
@@ -140,17 +161,17 @@ newBoundaries = zeros(ceil(numHops/2),2,like=boundaries);
 mergeThreshold = isecond2frame(0.1,fs,timeResolution);
 lengthThreshold = isecond2frame(0.1,fs,timeResolution);
 
-% Process detected target sound segments
+% Process detected speech segments
 idx = 1;
 for ii = 1:size(boundaries,1)
 
-    % Isolate target sound segment
+    % Isolate speech segment
     x = audioIn(boundaries(ii,1):boundaries(ii,2));
 
     % Pad the segment the same as vadnetPreprocess
     xp = [zeros(padLength,1,like=x);x(:);zeros(padLength,1,like=x)];
 
-    % Buffer target sound segment into analysis chunks
+    % Buffer speech segment into analysis chunks
     xb = audio.internal.buffer(xp,chunkLength,chunkLength);
 
     % Compute energy per chunk
@@ -229,10 +250,10 @@ activation = (x >= activationThreshold);
 deactivation = (x >= deactivationThreshold);
 vadmask = activation + deactivation;
 
-% vadmask==2, active target sound region
-% vadmask==1, between active and deactive thresholds, hold target sound region as
+% vadmask==2, active speech region
+% vadmask==1, between active and deactive thresholds, hold speech region as
 %             active until deactive threshold is crossed.
-% vadmask==0, non target sound region
+% vadmask==0, non speech region
 
 vadmaskIsOne = (vadmask==1);
 for ii = 2:numel(x)
@@ -266,9 +287,9 @@ plot(axeshandle,t,audioIn)
 grid on
 hold on
 ylabel(getString(message('audio:convenienceplots:Amplitude')))
-xlabel(getString(message('audio:detecttargetsound:TimeAxis')))
+xlabel(getString(message('audio:detectSpeech:TimeAxis')))
 
-% Add patches indicating the regions of detected target sound
+% Add patches indicating the regions of detected speech
 amax = max(audioIn);
 amin = min(audioIn);
 for idx = 1:size(boundaries,1)
@@ -290,9 +311,9 @@ ylabel(getString(message('audio:convenienceplots:Probability')))
 
 % Add plot title
 if isempty(boundaries)
-    title(getString(message('audio:detecttargetsound:PlotTitleNotargetsound')))
+    title(getString(message('audio:detectSpeech:PlotTitleNoSpeech')))
 else
-    title(getString(message('audio:detecttargetsound:PlotTitle')))
+    title(getString(message('audio:detectSpeech:PlotTitle')))
 end
 yyaxis left
 hold off

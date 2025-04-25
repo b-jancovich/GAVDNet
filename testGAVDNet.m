@@ -24,7 +24,6 @@ configPath = "C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m";
 %% Set Paths and Load Input Variables
 
 % Add dependencies to path
-% Add dependencies to path
 run(configPath) % Load config file
 projectRoot = pwd;
 [gitRoot, ~, ~] = fileparts(projectRoot);
@@ -44,50 +43,7 @@ end
 
 %% Set up for GPU or CPU processing
 
-numGPUs = gpuDeviceCount("available");
-% Check if GPU is available
-if numGPUs > 0
-    % GPU is available
-    fprintf('Found %d GPU device(s)\n', numGPUs);
-
-    % Initialize variables to store max memory and corresponding device ID
-    maxMemory = 0;
-    maxMemoryDeviceID = 1;
-
-    % Loop through each GPU to find the one with maximum available memory
-    for i = 1:numGPUs
-        % Get current GPU info
-        gpuInfo = gpuDevice(i);
-
-        % Get available memory in bytes and convert to GB for display
-        availableMemory = gpuInfo.AvailableMemory;
-        availableMemoryGB = availableMemory / (1024^3);
-
-        fprintf('GPU %d: %s - Available Memory: %.2f GB\n', ...
-            i, gpuInfo.Name, availableMemoryGB);
-
-        % Check if this GPU has more available memory
-        if availableMemory > maxMemory
-            maxMemory = availableMemory;
-            maxMemoryDeviceID = i;
-        end
-    end
-
-    % Select the GPU with the most available memory
-    fprintf('Selecting GPU %d with %.2f GB available memory\n', ...
-        maxMemoryDeviceID, maxMemory / (1024^3));
-    gpu = gpuDevice(maxMemoryDeviceID);
-    reset(gpu);
-
-    useGPU = true;
-    disp('Audio datastore will output to GPU.')
-else
-    % No GPU available
-    disp('AudioDatastore will output to CPU.');
-    useGPU = false;
-end
-clear gpuInfo
-
+[useGPU, gpuDeviceID, ~] = gpuConfig();
 
 %% Set up test audio datastore
 
@@ -116,8 +72,8 @@ while hasdata(ads_test)
 
     % Clear GPU memory from previous iteration
     if useGPU
-        wait(gpuDevice(maxMemoryDeviceID)); % Wait for operations on the selected GPU
-        reset(gpuDevice(maxMemoryDeviceID)); % Reset the selected GPU
+        wait(gpuDevice(gpuDeviceID)); % Wait for operations on the selected GPU
+        reset(gpuDevice(gpuDeviceID)); % Reset the selected GPU
     end
 
     % Read audio file
@@ -137,16 +93,9 @@ while hasdata(ads_test)
     detections(fileIdx).fileDuration = detections(fileIdx).fileSamps / detections(fileIdx).fileFs;
 
     % Extract datetime from filename
-    detections(fileIdx).fileStartDateTime = extractDatetimeFromFilename(fileInfo.FileName);
+    detections(fileIdx).fileStartDateTime = extractDatetimeFromFilename(fileInfo.FileName, 'datetime');
 
-    % Skip if file doesn't contain valid audio
-    if isValidAudio(audioIn) == false
-        warning('File %s did not contain valid audio. Skipping...\n', detections(fileIdx).fileName)
-        fileIdx = fileIdx + 1;
-        continue
-    end
-
-    % Skip if file name doesn't contain valid date
+    % Skip this file if it's name doesn't contain a valid start date
     if isempty(detections(fileIdx).fileStartDateTime) ||...
             isnat(detections(fileIdx).fileStartDateTime)
         warning('Could not extract datetime from filename: %s. Skipping...\n',...
@@ -155,13 +104,73 @@ while hasdata(ads_test)
         continue
     end
 
-    % Run Model 
-    y = predict(model.net, gpuArray(XValidation));
+    % Skip this file if it doesn't contain valid audio
+    if isValidAudio(audioIn) == false
+        warning('File %s did not contain valid audio. Skipping...\n', detections(fileIdx).fileName)
+        fileIdx = fileIdx + 1;
+        continue
+    end
 
-    % Run VADNet Postprocessing
-    boundaries = vadnetPostprocess(audioValidation,fs,y);
-    
-    YValidationPerSample = double(sigroi2binmask(boundaries,size(audioValidation,1)));
-    
-    XValidation = vadnetPreprocess(audioValidation,fs);
+    % Construct Datetime vector for the audio (sample-domain)
+    detections(fileIdx).sampleDomainTimeVector = createDateTimeVector(...
+        detections(fileIdx).fileStartDateTime,...
+        detections(fileIdx).fileSamps, ...
+        detections(fileIdx).fileFs);
 
+
+    % Run Preprocessing & Feature Extraction on audio & buffer the time
+    % vector to the stft time bin domain 
+    % [features, ~] = gavdNetPreprocess(...
+    %     audioIn, ...
+    %     detections(fileIdx).fileFs, ...
+    %     model.preprocParams.fsTarget, ...
+    %     model.preprocParams.bandwidth, ...
+    %     model.preprocParams.windowDur,...
+    %     model.preprocParams.hopDur);
+
+    [audioIn, fs] = audioread("C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav");
+
+    fprintf('Size of audioIn: %d x %d\n', size(audioIn))
+    fprintf('Fs of audioIn: %d\n', fs)
+    fprintf("FsTarget is %d\n", model.preprocParams.fsTarget)
+
+    featuresVAD = vadnetPreprocess(audioIn, fs);
+
+    [featuresGAVD, ~] = gavdNetPreprocess(...
+        audioIn, ...
+        fs, ...
+        model.preprocParams.fsTarget, ...
+        model.preprocParams.bandwidth, ...
+        model.preprocParams.windowDur,...
+        model.preprocParams.hopDur);
+
+    fprintf('Size of featuresVAD: %d x %d\n', size(featuresVAD))
+    fprintf('Size of featuresGAVD: %d x %d\n', size(featuresGAVD))
+
+    % Run Model in minibatch mode to save memory
+    % y = minibatchpredict(model.net, gpuArray(features));
+    yVAD = minibatchpredict(model.net, gpuArray(featuresVAD));
+    yGAVD = minibatchpredict(model.net, gpuArray(featuresGAVD));
+
+    fprintf('Size of yVAD: %d x %d\n', size(yVAD))
+    fprintf('Size of yGAVD: %d x %d\n', size(yGAVD))
+
+    % Run VADNet Postprocessing to determine decision boundaries. 
+    vadnetPostprocess(audioIn, fs, yVAD);
+    % vadnetPostprocess(audioIn, model.preprocParams.fsTarget, yGAVD);
+    gavdNetPostprocess(audioIn, fs, yGAVD, model.preprocParams);
+
+    % boundaries = gavdNetPostprocess(audioIn, fsTarget, y);
+    
+    % Convert boundaries to a binary mask in the audio-sample-domain 
+    detections(fileIdx).sampleDomainPredictionsMask = double(sigroi2binmask(boundaries, size(audioIn, 1)));
+
+    % Get the datetime start and end times for each detected event using 
+    % the sampleDomainTimeVector and the sampleDomainPredictionsMask:
+    [eventStarts, eventEnds] = findEventBoundaries(detections(fileIdx).sampleDomainPredictionsMask);
+    detections(fileIdx).eventStartTimes = detections(fileIdx).sampleDomainTimeVector(eventStarts);
+    detections(fileIdx).eventEndTimes = detections(fileIdx).sampleDomainTimeVector(eventEnds);
+     
+     % Increment the file index for the next iteration
+     fileIdx = fileIdx + 1;
+end

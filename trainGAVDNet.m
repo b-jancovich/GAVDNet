@@ -138,49 +138,7 @@ fprintf('\n')
 
 %% Set up for GPU or CPU processing
 
-numGPUs = gpuDeviceCount("available");
-% Check if GPU is available
-if numGPUs > 0
-    % GPU is available
-    fprintf('Found %d GPU device(s)\n', numGPUs);
-
-    % Initialize variables to store max memory and corresponding device ID
-    maxMemory = 0;
-    maxMemoryDeviceID = 1;
-
-    % Loop through each GPU to find the one with maximum available memory
-    for i = 1:numGPUs
-        % Get current GPU info
-        gpuInfo = gpuDevice(i);
-        
-        % Get available memory in bytes and convert to GB for display
-        availableMemory = gpuInfo.AvailableMemory;
-        availableMemoryGB = availableMemory / (1024^3);
-        
-        fprintf('GPU %d: %s - Available Memory: %.2f GB\n', ...
-            i, gpuInfo.Name, availableMemoryGB);
-        
-        % Check if this GPU has more available memory
-        if availableMemory > maxMemory
-            maxMemory = availableMemory;
-            maxMemoryDeviceID = i;
-        end
-    end
-    
-    % Select the GPU with the most available memory
-    fprintf('Selecting GPU %d with %.2f GB available memory\n', ...
-        maxMemoryDeviceID, maxMemory / (1024^3));
-    gpu = gpuDevice(maxMemoryDeviceID);
-    reset(gpu);
-
-    useGPU = true;
-    disp('Datastores will output to GPU.')
-else
-    % No GPU available
-    disp('Datastores will output to CPU.');
-    useGPU = false;
-end
-clear gpuInfo
+[useGPU, gpuDeviceID, ~] = gpuConfig();
 fprintf('\n')
 
 %% Load the noiseless sample(s)
@@ -573,16 +531,16 @@ model.sequenceChunking.frameHopLength = frameHopLength; % The length hop between
 %% Memory Management & Cleanup Before Training
 
 % Clear intermediate variables that are no longer needed
-clearvars -except maxMemoryDeviceID trainDS valDS model gavdNetDataPath
+clearvars -except gpuDeviceID trainDS valDS model gavdNetDataPath
 
 % Reset GPU memory if using GPU
 if gpuDeviceCount > 0
     % Force garbage collection on GPU
-    gpuDevice(maxMemoryDeviceID);
+    gpuDevice(gpuDeviceID);
     disp('GPU memory has been reset');
     
     % Display available memory
-    gpuInfo = gpuDevice(maxMemoryDeviceID);
+    gpuInfo = gpuDevice(gpuDeviceID);
     fprintf('Available GPU memory: %.2f GB\n', gpuInfo.AvailableMemory/1e9);
 end
 
