@@ -139,7 +139,6 @@ fprintf('\n')
 %% Set up for GPU or CPU processing
 
 [useGPU, gpuDeviceID, ~] = gpuConfig();
-fprintf('\n')
 
 %% Load the noiseless sample(s)
 
@@ -319,8 +318,23 @@ else
         OutputDataType="single");
     [~, ads_info] = read(ads_cleanSignals);
     cleanSignals_fs = ads_info.SampleRate;
-    clear ads_cleanSignals
 end
+
+% Get clean signal lengths
+nCleanSigals = length(ads_cleanSignals.Files);
+cleanSignalDurations = zeros(1, nCleanSigals);
+i = 1;
+while hasdata(ads_cleanSignals)
+    [audio, audioInfo] = read(ads_cleanSignals);
+    cleanSignalDurations(i) = length(audio) / audioInfo.SampleRate;
+    i = i+1;
+end
+reset(ads_cleanSignals)
+
+% Get the minimum, mean & max lenght of clean signals
+meanCallDuration = mean(cleanSignalDurations);
+minCallDuration = min(cleanSignalDurations);
+maxCallDuration = max(cleanSignalDurations);
 
 %% Build Sequences from clean samples & noise, saving them direct to disk
 
@@ -457,7 +471,6 @@ if buildXandT == true
         end
         i = i+1;
     end
-
 end
 
 %% Set up datastores to allow access to on-disk training and validation data:
@@ -510,6 +523,9 @@ model.dataSynthesisParams.lpfCutoffRange = lpf_cutoff_range;
 model.dataSynthesisParams.reverbDecayTimeRange = decayTimeRange;
 model.dataSynthesisParams.transmissionLossStrengthRange = trans_loss_strength_range;
 model.dataSynthesisParams.transmissionLossDensityRange = trans_loss_density_range;
+model.dataSynthesisParams.meanTargetCallDuration = meanCallDuration;
+model.dataSynthesisParams.minTargetCallDuration = minCallDuration;
+model.dataSynthesisParams.maxTargetCallDuration = maxCallDuration;
 
 % Training Hyper-parameters:
 model.trainingHyperparams.miniBatchSize = miniBatchSize; % Number of training samples to run per training iterationmodel.
@@ -522,11 +538,10 @@ model.trainingHyperparams.learnRateDropPeriod = lrDropPeriod; % The period over 
 model.trainingHyperparams.learnRateDropFactor = lrDropFac; % The factor by which the learning rate drops.
 
 % Training Sequence Chunking:
-model.sequenceChunking.frameDuration = frameDuration; % The duration of the overlapping spectrogram frames (seconds)
-model.sequenceChunking.frameStepLength = frameStepLength; % The length of the overlapping spectrogram frames (spectrogram time bins)
-model.sequenceChunking.frameOverlapPercent = frameOverlapPercent; % The overlap of the overlapping spectrogram frames (percent of frameDuration)
-model.sequenceChunking.frameHopLength = frameHopLength; % The length hop between overlapping spectrogram frames (spectrogram time bins)
-
+model.featureFraming.frameDuration = frameDuration; % The duration of the overlapping spectrogram frames (seconds)
+model.featureFraming.frameStepLength = frameStepLength; % The length of the overlapping spectrogram frames (spectrogram time bins)
+model.featureFraming.frameOverlapPercent = frameOverlapPercent; % The overlap of the overlapping spectrogram frames (percent of frameDuration)
+model.featureFraming.frameHopLength = frameHopLength; % The length hop between overlapping spectrogram frames (spectrogram time bins)
 
 %% Memory Management & Cleanup Before Training
 

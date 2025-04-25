@@ -41,6 +41,10 @@ else
     load(fullfile(location, file))
 end
 
+% Set the length threshold parameter for the post-processing equal to the 
+% duration of the shortest call in the training dataset.
+postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration;
+
 %% Set up for GPU or CPU processing
 
 [useGPU, gpuDeviceID, ~] = gpuConfig();
@@ -117,48 +121,20 @@ while hasdata(ads_test)
         detections(fileIdx).fileSamps, ...
         detections(fileIdx).fileFs);
 
-
-    % Run Preprocessing & Feature Extraction on audio & buffer the time
-    % vector to the stft time bin domain 
-    % [features, ~] = gavdNetPreprocess(...
-    %     audioIn, ...
-    %     detections(fileIdx).fileFs, ...
-    %     model.preprocParams.fsTarget, ...
-    %     model.preprocParams.bandwidth, ...
-    %     model.preprocParams.windowDur,...
-    %     model.preprocParams.hopDur);
-
-    [audioIn, fs] = audioread("C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav");
-
-    fprintf('Size of audioIn: %d x %d\n', size(audioIn))
-    fprintf('Fs of audioIn: %d\n', fs)
-    fprintf("FsTarget is %d\n", model.preprocParams.fsTarget)
-
-    featuresVAD = vadnetPreprocess(audioIn, fs);
-
-    [featuresGAVD, ~] = gavdNetPreprocess(...
+    % Run Preprocessing & Feature Extraction on audio
+    [features, ~] = gavdNetPreprocess(...
         audioIn, ...
-        fs, ...
+        detections(fileIdx).fileFs, ...
         model.preprocParams.fsTarget, ...
         model.preprocParams.bandwidth, ...
         model.preprocParams.windowDur,...
         model.preprocParams.hopDur);
 
-    fprintf('Size of featuresVAD: %d x %d\n', size(featuresVAD))
-    fprintf('Size of featuresGAVD: %d x %d\n', size(featuresGAVD))
-
     % Run Model in minibatch mode to save memory
-    % y = minibatchpredict(model.net, gpuArray(features));
-    yVAD = minibatchpredict(model.net, gpuArray(featuresVAD));
-    yGAVD = minibatchpredict(model.net, gpuArray(featuresGAVD));
-
-    fprintf('Size of yVAD: %d x %d\n', size(yVAD))
-    fprintf('Size of yGAVD: %d x %d\n', size(yGAVD))
+    y = minibatchpredict(model.net, gpuArray(features));
 
     % Run VADNet Postprocessing to determine decision boundaries. 
-    vadnetPostprocess(audioIn, fs, yVAD);
-    % vadnetPostprocess(audioIn, model.preprocParams.fsTarget, yGAVD);
-    gavdNetPostprocess(audioIn, fs, yGAVD, model.preprocParams);
+    boundaries = gavdNetPostprocess(audioIn, detections(fileIdx).fileFs, model.preprocParams, y, postProcOptions);
 
     % boundaries = gavdNetPostprocess(audioIn, fsTarget, y);
     

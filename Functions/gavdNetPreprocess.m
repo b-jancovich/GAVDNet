@@ -5,12 +5,6 @@ function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, band
 %   is provided, it also transforms the mask from audio sample domain to 
 %   spectrogram time-bin domain for training purposes.
 %
-%   At inference, the 'mask' input can be handed a matlab vector of doubles
-%   containing 'datenum' serial date numbers that represent the date and 
-%   time indices of every audio sample in x. Like the mask, this will be
-%   buffered such that every element represents the date and time index 
-%   of the corresponding spectrogram time bin.
-%   
 %   Inputs:
 %   x           = the signal to preprocess
 %   fsIn        = the original sampling rate of 'x' (Hz)
@@ -24,6 +18,14 @@ function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, band
 %   features      = The spectrogram, returned as a 40-by-T array, where T is the number of
 %                   time bins, dependent on windowDur, hopDur and the length of x.
 %   transformedMask = (optional) Mask transformed to spectrogram time-bin domain
+%
+% References:
+%   This function is a customised version of the MATLAB function
+%   "vadnetPreprocess", which itself is a port of code from the open 
+%   source code toolkit "SpeechBrain" [1]. 
+%
+%   [1] Ravanelli, Mirco, et al. SpeechBrain: A General-Purpose Speech Toolkit. 
+%   arXiv, 8 June 2021. arXiv.org, http://arxiv.org/abs/2106.04624
 %
 % Ben Jancovich, 2024
 % Centre for Marine Science and Innovation

@@ -67,7 +67,7 @@ ICI_variation = 1.49;        % Inter-Call-Interval +/- variation (seconds)
 
 % Parameters for augmenting clean samples
 c = 1500;                   % Typical sound propagation velocity (m/s)
-speedup_factor_range = [0.95, 1.05]; % Time stretching factor range
+speedup_factor_range = [0.97, 1.02]; % Time stretching factor range
 lpf_cutoff_range = [38, 50];         % Low-pass filter cutoff range (Hz)
 source_velocity_range = [1, 30];      % Source velocity range for Doppler (m/s)
 distortionRange = [0.1, 0.4];        % Nonlinear distortion magnitude range
@@ -95,3 +95,26 @@ lrDropFac = 1;               % Learning rate drop factor
 % Feature Framing settings
 frameDuration = ICI / 2;    % Duration of each frame passed to the network (seconds)
 frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
+
+%% Post processing parameters
+
+postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
+%                           threshold for starting a vocalisation segment. 
+%                           Specify as a scalar in the range [0,1]. If 
+%                           unspecified, defaults to 0.5.
+%
+postProcOptions.DT = 0.25;  % Deactivation Threshold. Sets the probability 
+%                           threshold for ending a vocalisation segment. 
+%                           Specify as a scalar in the range [0,1]. If 
+%                           unspecified, defaults to 0.25.
+%
+postProcOptions.AEAVD = true; % Apply Energy Animal Vocalisation Detection
+%                           Specifies whether to apply an energy-based 
+%                           vocalization activity detector to refine the 
+%                           regions detected by the neural network. If 
+%                           unspecified, ApplyEnergyGAVD defaults to false.
+%
+postProcOptions.MT = 1;     % Merge Threshold. Merges vocalization regions
+%                           that are separated by MT seconds or less. 
+%                           Specify as a nonnegative scalar. If unspecified, 
+%                           defaults to 0.25 (seconds).
