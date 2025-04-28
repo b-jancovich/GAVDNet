@@ -53,4 +53,5 @@ fprintf('Model probabilities vector "y" has size: %g x %g\n', size(y))
 fprintf('Postprocesing model outputs...\n')
 gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);
  
+% Get regions of interest
 roi = gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);

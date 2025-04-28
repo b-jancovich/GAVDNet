@@ -122,11 +122,8 @@ avdmask = iapplyThreshold(probs(:), activationThreshold, deactivationThreshold);
 % Convert frame-based mask to frame-based roi
 b1 = binmask2sigroi(avdmask);
 
-% Convert frame-based roi to sample-based roi
-boundaries = iframe2sample(b1, fileFs, timeResolution);
-
-% Clip the final boundary to the number of original audio samples
-boundaries = min(boundaries, numel(audioIn));
+% Use corrected time-to-sample conversion that accounts for preprocessing padding
+boundaries = iframe2sample_corrected(b1, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
 
 % Apply energy-based detection refinement if requested
 if AEAVD
@@ -159,7 +156,7 @@ switch nargout
         varargout{1} = sampleroi;
     case 2
         varargout{1} = sampleroi;
-        varargout{2} = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, bandwidth);
+        varargout{2} = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
 end
 
 end
@@ -210,7 +207,7 @@ for ii = 1:size(boundaries, 1)
     frameroi = b3;
 
     % Convert frame-based roi to sample-based roi
-    energyBoundaries = iframe2sample(frameroi, fileFs, timeResolution);
+    energyBoundaries = iframe2sample_corrected(frameroi, fileFs, fileFs, numel(x), hopLen, hopLen, padLength);
 
     % Get the final boundaries in the original signal
     offset = boundaries(ii,1);
@@ -250,15 +247,37 @@ function samples = isecond2sample(xseconds, fileFs)
 samples = max(floor(xseconds*fileFs), 1);
 end
 
-function samples = iframe2sample(frame, fileFs, timeResolution)
-%iframe2sample Convert frames to samples, extending the boundaries
+function samples = iframe2sample_corrected(frame, fileFs, targetFs, audioLength, windowLen, hopLen, padLen)
+%iframe2sample_corrected Convert frames to samples, accounting for preprocessing
+%
+% This corrected version properly accounts for:
+% 1. The padding added during preprocessing
+% 2. The difference between original and target sample rates
+% 3. The window and hop length used in the STFT
 
 if isempty(frame)
     samples = frame;
-else
-    xseconds = iframe2second(frame, timeResolution);
-    samples = isecond2sample(xseconds, fileFs);
+    return;
 end
+
+% Convert frame indices to time positions (seconds) in the padded, resampled signal
+timeResolution = hopLen / targetFs;
+frameTimesInPaddedSignal = iframe2second(frame, timeResolution);
+
+% Adjust for padding (half window at beginning)
+paddingTimeOffset = padLen / targetFs;
+frameTimesInResampledSignal = frameTimesInPaddedSignal - paddingTimeOffset;
+
+% Ensure no negative times after padding adjustment
+frameTimesInResampledSignal(:,1) = max(frameTimesInResampledSignal(:,1), 0);
+frameTimesInResampledSignal(:,2) = max(frameTimesInResampledSignal(:,2), 0);
+
+% Convert times to sample indices in the original signal
+samples = round(frameTimesInResampledSignal * fileFs) + 1;
+
+% Ensure boundaries are within the original audio
+samples(:,1) = max(1, min(samples(:,1), audioLength));
+samples(:,2) = max(1, min(samples(:,2), audioLength));
 end
 
 function avdmask = iapplyThreshold(x, activationThreshold, deactivationThreshold)
@@ -294,7 +313,6 @@ end
 function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth)
 %conveniencePlot Convenience plot for gavdNetPostprocess
 
-
 % Create time vector
 t_waveform = (0:length(audioIn)-1)/fileFs;
 
@@ -314,7 +332,8 @@ xlabel('Time (s)')
 
 % Plot the probability vector against time
 yyaxis right
-sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), hopLen);
+padLen = round(windowLen/2);
+sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
 plot(ax1, t_waveform, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
 ylim([0,1])
 ylabel('Probability of target sound detection')
@@ -329,7 +348,7 @@ ax2 = nexttile;
 FFTLen = 8 * 2^(ceil(log2(windowLen)));
 
 % Compute spectrogram
-[s, f, t_spectrogram] = spectrogram(audioIn, windowLen, hopLen, FFTLen, fileFs, 'yaxis');
+[s, f, t_spectrogram] = spectrogram(audioIn, windowLen, windowLen-hopLen, FFTLen, fileFs, 'yaxis');
 
 % Manually plot the spectrogram with correct time units
 imagesc(ax2, t_spectrogram, f, pow2db(abs(s).^2))
@@ -370,49 +389,49 @@ else
 end
 end
 
-function sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, N, hopLen)
-% Hold the probability for the number of samples per hop
-% Because the last frame is not overlapped in front, its decision
-% gets held longer.
+function sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, N, windowLen, hopLen, padLen)
+% Convert frame probabilities to sample-based probabilities
+% This corrected version accounts for:
+% 1. The padding in the preprocessor (padLen)
+% 2. The window and hop length
+% 3. The different sample rates
 
-% Use the same relative proportions as the original gavdnetPostprocess
-% In original VADnet: first=80 (0.5*hopLen), middle=160 (hopLen), last=280 (1.75*hopLen)
-firstSamples = round(hopLen / 2);       % Half hop 
-middleSamples = hopLen;                 % Full hop 
-lastSamples = round(hopLen * 1.75);     % Hop + padding 
+% Calculate key parameters
+frameDuration = hopLen / targetFs;  % Duration of each frame in seconds
 
-% Create sample-based probabilities
-sampleprob_targetFs = cat(1, repelem(probs(1), firstSamples, 1), ...
-                         repelem(probs(2:end-1), middleSamples, 1), ...
-                         repelem(probs(end), lastSamples, 1));
+% Create array to hold per-sample probabilities at target sample rate
+paddedLength = ceil(N * targetFs / fileFs) + (2 * padLen);
+sampleprob_targetFs = zeros(paddedLength, 1);
 
-% Resample the probability back to original sample rate
+% For each probability value, fill in the corresponding samples
+for i = 1:length(probs)
+    % Calculate the start and end sample indices for this frame
+    startSample = padLen + 1 + (i-1) * hopLen;
+    endSample = min(paddedLength, startSample + hopLen - 1);
+    
+    % Fill in the probability for these samples
+    sampleprob_targetFs(startSample:endSample) = probs(i);
+end
+
+% Remove the padding
+sampleprob_targetFs = sampleprob_targetFs(padLen+1:end-padLen);
+
+% Resample to the original file sample rate
 if fileFs ~= targetFs
-    sampleprob_fileFs = iNearestNeighborResample(sampleprob_targetFs, fileFs, targetFs);
+    % Need a cleaner resampling method than nearest neighbor for accurate boundaries
+    sampleprob_fileFs = resample(double(sampleprob_targetFs), fileFs, targetFs);
 else
     sampleprob_fileFs = sampleprob_targetFs;
 end
 
-% Clip off any padding introduced
-sampleprob_fileFs = sampleprob_fileFs(1:min(N, numel(sampleprob_fileFs)));
-
-% If the vector is too short, pad with the last value
-if numel(sampleprob_fileFs) < N
-    sampleprob_fileFs = [sampleprob_fileFs; repelem(sampleprob_fileFs(end), N - numel(sampleprob_fileFs), 1)];
+% Adjust length to match the original audio
+if length(sampleprob_fileFs) > N
+    sampleprob_fileFs = sampleprob_fileFs(1:N);
+elseif length(sampleprob_fileFs) < N
+    % Pad with the last probability if needed
+    sampleprob_fileFs = [sampleprob_fileFs; repelem(sampleprob_fileFs(end), N-length(sampleprob_fileFs), 1)];
 end
 
-% Clamp the probability to range [0,1]
+% Clamp probabilities to [0,1] range
 sampleprob = iclampProb(sampleprob_fileFs);
-end
-
-function y = iNearestNeighborResample(x, targetFs, originalFs)
-% Get total number of samples after resampling
-numOriginalSamples = numel(x);
-numResampledSamples = round(numOriginalSamples*(targetFs/originalFs));
-
-% Get resample indices
-resampleIndices = round(linspace(1, numOriginalSamples, numResampledSamples));
-
-% Resample
-y = x(resampleIndices);
 end
