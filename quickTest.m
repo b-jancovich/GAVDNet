@@ -52,3 +52,5 @@ fprintf('Model probabilities vector "y" has size: %g x %g\n', size(y))
 % Run postprocessing to determine decision boundaries. 
 fprintf('Postprocesing model outputs...\n')
 gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);
+ 
+roi = gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);
