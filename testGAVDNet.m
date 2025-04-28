@@ -72,8 +72,8 @@ load(groundtruthPath)
 fileIdx = 1;
 while hasdata(ads_test)
     % Announce start
-    fprintf('\nRunning pre-processing file %d of %d...\n', fileIdx, length(ads_test.Files))
-
+    fprintf('Running inference on file %d of %d...\n', fileIdx, length(ads_test.Files))
+    
     % Clear GPU memory from previous iteration
     if useGPU
         wait(gpuDevice(gpuDeviceID)); % Wait for operations on the selected GPU
@@ -81,6 +81,7 @@ while hasdata(ads_test)
     end
 
     % Read audio file
+    fprintf('Reading audio...\n')
     try
         [audioIn, fileInfo] = read(ads_test);
     catch ME
@@ -97,6 +98,7 @@ while hasdata(ads_test)
     detections(fileIdx).fileDuration = detections(fileIdx).fileSamps / detections(fileIdx).fileFs;
 
     % Extract datetime from filename
+    fprintf('Extracting datetime stamp from audio filename...\n')
     detections(fileIdx).fileStartDateTime = extractDatetimeFromFilename(fileInfo.FileName, 'datetime');
 
     % Skip this file if it's name doesn't contain a valid start date
@@ -122,22 +124,23 @@ while hasdata(ads_test)
         detections(fileIdx).fileFs);
 
     % Run Preprocessing & Feature Extraction on audio
+    fprintf('Preprocesing audio & extracting features...\n')
     [features, ~] = gavdNetPreprocess(...
         audioIn, ...
         detections(fileIdx).fileFs, ...
         model.preprocParams.fsTarget, ...
         model.preprocParams.bandwidth, ...
-        model.preprocParams.windowDur,...
-        model.preprocParams.hopDur);
+        model.preprocParams.windowLen,...
+        model.preprocParams.hopLen);
 
     % Run Model in minibatch mode to save memory
+    fprintf('Running model...\n')
     y = minibatchpredict(model.net, gpuArray(features));
 
-    % Run VADNet Postprocessing to determine decision boundaries. 
-    boundaries = gavdNetPostprocess(audioIn, detections(fileIdx).fileFs, model.preprocParams, y, postProcOptions);
+    % Run postprocessing to determine decision boundaries. 
+    fprintf('Postprocesing model outputs...\n')
+    boundaries = gavdNetPostprocess(audioIn, detections(fileIdx).fileFs, y, model.preprocParams, postProcOptions);
 
-    % boundaries = gavdNetPostprocess(audioIn, fsTarget, y);
-    
     % Convert boundaries to a binary mask in the audio-sample-domain 
     detections(fileIdx).sampleDomainPredictionsMask = double(sigroi2binmask(boundaries, size(audioIn, 1)));
 

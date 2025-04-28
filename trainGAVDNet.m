@@ -390,8 +390,8 @@ reset(sequenceDS_val)
 %% Extract features from training & validation data
 
 % Init STFT and framing parameters 
-windowLen = windowDur * fsTarget;
-hopLen = hopDur * fsTarget;
+windowLen = round(windowDur * fsTarget);
+hopLen = round(hopDur * fsTarget);
 overlapLen = windowLen - hopLen;
 frameHopLength = windowLen - overlapLen;
 frameStepLength = round(frameDuration * fsTarget / frameHopLength);
@@ -411,7 +411,7 @@ if buildXandT == true
         mask = sequence.mask;
         
         % Run preprocessor:
-        [XTrain, TTrain] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowDur, hopDur, mask);
+        [XTrain, TTrain] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowLen, hopLen, mask);
     
         % Buffer training features into frames
         XTrainBuffered = featureBuffer(XTrain, frameStepLength, ...
@@ -447,7 +447,7 @@ if buildXandT == true
         mask = sequence.mask;
         
         % Run preprocessor:
-        [XVal, TVal] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowDur, hopDur, mask);
+        [XVal, TVal] = gavdNetPreprocess(audio, outputFs, fsTarget, bandwidth, windowLen, hopLen, mask);
 
         % Buffer training features into frames
         XValBuffered = featureBuffer(XVal, frameStepLength, ...
@@ -511,7 +511,6 @@ model.dataSynthesisParams.numSequences = numSequences; % The total number of tra
 model.dataSynthesisParams.trainPercentage = trainPercentage; % The percentage of "numSequences" used for training (as opposed to validation)
 model.dataSynthesisParams.sequenceDuration = sequenceDuration; % The duration of the sequences (s)
 model.dataSynthesisParams.snrRange = snrRange; % Range of random SNRs in the synthetic sequences (dB)
-model.dataSynthesisParams.minSilenceSegment = minSilenceSegment; % Minimum random duration of silence between concatenated samples in a sequence (s)
 model.dataSynthesisParams.nNoiselessSamples = n_noiseless_samples;
 model.dataSynthesisParams.nAugmentedCleanSamples = n_augmented_Samples_total;
 model.dataSynthesisParams.nSamplesPerSequence = round(n_augmented_Samples_total/numSequences);

@@ -56,10 +56,9 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 
 % Parameters for building synthetic training sequences
 % callsPerSequence = 10;
-numSequences = 400;
+numSequences = 600;
 sequenceDuration = 3600;     % Duration of synthetic sequences (seconds)
-minSilenceSegment = 1;       % Minimum silence between samples (seconds)
-snrRange = [-15, 10];        % Range of SNRs in training data (dB)
+snrRange = [-18, 10];        % Range of SNRs in training data (dB)
 ICI = 190.79;                % Inter-Call-Interval (seconds) 
 ICI_variation = 1.49;        % Inter-Call-Interval +/- variation (seconds)
 
@@ -78,7 +77,7 @@ trans_loss_density_range = [0.1, 0.2];  % Transmission loss event density range
 %% Neural Network Training Parameters
 
 % Feature extraction parameters for gavdNetPreprocess
-fsTarget = 200;              % Target sample rate for feature extraction (Hz)
+fsTarget = 250;              % Target sample rate for feature extraction (Hz)
 bandwidth = [10, 60];        % Frequency bandwidth for spectrograms (Hz)
 windowDur = 0.85;            % STFT window duration (seconds)
 hopDur = 0.05;               % STFT hop duration (seconds)
@@ -93,28 +92,24 @@ lrDropPeriod = 2;            % Period for learning rate drop (epochs)
 lrDropFac = 1;               % Learning rate drop factor
 
 % Feature Framing settings
-frameDuration = ICI / 2;    % Duration of each frame passed to the network (seconds)
+frameDuration = ICI;    % Duration of each frame passed to the network (seconds)
 frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Post processing parameters
 
 postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
-%                           Specify as a scalar in the range [0,1]. If 
-%                           unspecified, defaults to 0.5.
+%                           Specify as a scalar in the range [0,1].
 %
 postProcOptions.DT = 0.25;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
-%                           Specify as a scalar in the range [0,1]. If 
-%                           unspecified, defaults to 0.25.
+%                           Specify as a scalar in the range [0,1].
 %
 postProcOptions.AEAVD = true; % Apply Energy Animal Vocalisation Detection
 %                           Specifies whether to apply an energy-based 
 %                           vocalization activity detector to refine the 
-%                           regions detected by the neural network. If 
-%                           unspecified, ApplyEnergyGAVD defaults to false.
+%                           regions detected by the neural network.
 %
 postProcOptions.MT = 1;     % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
-%                           Specify as a nonnegative scalar. If unspecified, 
-%                           defaults to 0.25 (seconds).
+%                           Specify as a nonnegative scalar.

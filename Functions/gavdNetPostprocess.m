@@ -1,35 +1,41 @@
-function varargout = gavdNetPostprocess(audioIn, fileFs, preprocParams, probs, options)
+function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, postprocParams)
 % GAVDNETPOSTPROCESS Postprocess frame-based animal call detection probabilities
 
-%   roi = gavdNetPostprocess(audioIn, fileFs, preprocParams, probs) converts 
-%   call probability per frame to roi boundaries in samples. Specify audioIn and
-%   fileFs as the same values input to gavdNetPreprocess. Specify preprocParams
-%   as a structure containing preprocessing parameters, and probs as the
-%   value output from calling predict on the trained model.
-%
-%   roi = gavdNetPostprocess(...,ActivationThreshold=AT) sets the threshold
-%   for starting a vocalization segment. Specify ActivationThreshold as a scalar
-%   in the range [0,1]. If unspecified, ActivationThreshold defaults to 0.5.
-%
-%   roi = gavdNetPostprocess(...,DeactivationThreshold=DT) sets the
-%   threshold for ending a vocalization segment. Specify DeactivationThreshold as
-%   a scalar in the range [0,1]. If unspecified, DeactivationThreshold
-%   defaults to 0.25.
-%
-%   roi = gavdNetPostprocess(...,ApplyEnergyAVD=AEAVD) specifies whether to
-%   apply an energy-based vocalization activity detector to the regions
-%   detected by the neural network. If unspecified, ApplyEnergyGAVD defaults
-%   to false.
-%
-%   roi = gavdNetPostprocess(...,MergeThreshold=MT) merges vocalization regions
-%   that are separated by MT seconds or less. Specify MergeThreshold as a
-%   nonnegative scalar. If unspecified, MergeThreshold defaults to 0.25
-%   seconds.
-%
-%   roi = gavdNetPostprocess(...,LengthThreshold=LT) removes vocalization regions
-%   that have a duration of LT seconds or less. Specify LengthThreshold as
-%   a nonnegative scalar. If unspecified, LengthThreshold defaults to 0.25
-%   seconds.
+% This funciton converts call probability per frame to roi boundaries in 
+% samples. 
+% 
+% Inputs: 
+%   audioIn - the audio the model is operating on
+%   fileFs - original sample rate of audioIn, prior to preprocessing (Hz)
+%   probs - the raw output from the model when calling predict() or
+%           minibatchpredict() on the features extracted from audioIn.
+%   preprocParams - a struct containing preprocessing parameters used at 
+%                   training. embedded in the trained model's metadata.
+%   postprocPrams - a struct containing post-processing parameters i the
+%                   following fields:
+%                       - 'AT' (Activation threshold): sets the threshold
+%                       for starting a vocalization segment. Specify as a 
+%                       scalar in the range [0,1]. 
+%                       - 'DT' (Deactivation threshold): sets the threshold
+%                       for ending a vocalization segment. Specify as a 
+%                       scalar in the range [0,1]. 
+%                       - 'AT' (ApplyEnergyAVD): specifies whether to apply 
+%                       an energy-based vocalization activity detector to 
+%                       refine the neural network's detections. 
+%                       - 'MT' (Merge threshold): merges vocalization regions
+%                       that are separated by MT seconds or less. Specify 
+%                       as a nonnegative scalar. 
+%                       - 'LT' (Length threshold): removes vocalization regions
+%                       that have a duration of LT seconds or less. Specify 
+%                       as a nonnegative scalar. 
+% Outputs:
+%   roi - Call regions, returned as an N-by-2 matrix of indices into the 
+%           input signal, where N is the number of individual call regions 
+%           detected. The first column contains the index of the start of 
+%           a speech region, and the second column contains the index of 
+%           the end of a region.
+%   probs - Probability of speech per sample of the input audio signal, 
+%           returned as a column vector with the same size as the input signal.
 %
 %   gavdNetPostprocess(...) with no output arguments displays a plot of the
 %   detected vocalization regions in the input signal.
@@ -51,45 +57,53 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, preprocParams, probs, o
 arguments
     audioIn (:,1) {validateattributes(audioIn,{'single','double'},{'nonempty','vector','real','finite'},'gavdNetPostprocess','audioIn')}
     fileFs (1,1) {validateattributes(fileFs,{'single','double'},{'positive','real','nonnan','finite'},'gavdNetPostprocess','fs')}
-    preprocParams (1,1) struct
     probs (:,1) {validateattributes(probs,{'single','double'},{'nonempty','vector','real','nonnan','finite'},'gavdNetPostprocess','probs')}
-    options.ActivationThreshold (1,1) {validateattributes(options.ActivationThreshold,{'single','double'},{'scalar','<=',1,'>=',0},'gavdNetPostprocess','ActivationThreshold')} = 0.5;
-    options.DeactivationThreshold (1,1) {validateattributes(options.DeactivationThreshold,{'single','double'},{'scalar','<=',1,'>=',0},'gavdNetPostprocess','DeactivationThreshold')} = 0.25;
-    options.ApplyEnergyAVD (1,1) {mustBeNumericOrLogical} = false;
-    options.MergeThreshold (1,1) {validateattributes(options.MergeThreshold,{'numeric'},{'scalar','>=',0},'gavdNetPostprocess','MergeThreshold')} = 0.25;
-    options.LengthThreshold (1,1) {validateattributes(options.LengthThreshold,{'numeric'},{'scalar','>=',0},'gavdNetPostprocess','LengthThreshold')} = 0.25;
+    preprocParams (1,1) struct
+    postprocParams (1,1) struct
 end
-
-% Unpack preprocessor parameters (used in both training & inference)
-targetFs = preprocParams.fsTarget; % The new rate for the audio, resampled before stft (Hz) (AVDnet version = 16e3)
-hopDur = preprocParams.hopDur; % Duration of the STFT window hop (seconds) (VADnet version = 0.01)
-hopLen = preprocParams.hopLen; % Length of the STFT window hop (samples) (VADnet version = 160)
-
-% Time resolution of the spectrogram (same as hopDur in vadnetPreprocess)
-timeResolution = hopDur;
 
 % Parameters should not be on the GPU
 if isempty(coder.target)
-    options = structfun(@gather, options, UniformOutput=false);
+    postprocParams = structfun(@gather, postprocParams, UniformOutput=false);
     [fileFs, probs] = gather(fileFs, probs);
 end
 
+% Unpack post-processing params 
+activationThreshold = postprocParams.AT ;
+deactivationThreshold = postprocParams.DT;
+AEAVD = postprocParams.AEAVD;
+mergeThreshold = postprocParams.MT;
+lengthThreshold = postprocParams.LT;
+
+% Unpack preprocessor parameters (used in both training & inference)
+targetFs = preprocParams.fsTarget; % The new rate for the audio, resampled before stft (Hz)
+hopDur = preprocParams.hopDur; % Duration of the STFT window hop (seconds)
+hopLen = preprocParams.hopLen; % Length of the STFT window hop (samples)
+
+% Time resolution of the spectrogram
+timeResolution = hopDur;
+
 % Validate that the audio duration is consistent with the probability vector
-expNumHops = floor(ceil(numel(audioIn)*targetFs/fileFs)/hopLen) + 1;
-coder.internal.errorIf(expNumHops~=numel(probs), ...
-    'audio:gavdnet:InconsistentLengths', ...
-    numel(audioIn), numel(probs), 'gavdNetPreprocess');
+expNumHops = floor(ceil(numel(audioIn) * targetFs / fileFs) / hopLen) + 1;
+if expNumHops ~= numel(probs)
+    warning('Length of "audioIn" is %g samples with sample rate = %g Hz.\n', numel(audioIn), fileFs)
+    fprintf('Preprocessor is resampling to %g Hz.\n', targetFs)
+    fprintf('Preprocessor STFT hop is %g audio samples. \n', hopLen)
+    fprintf('Expecting "probs" to be %g frames long\n', expNumHops)
+    fprintf('Length of "probs" is %g frames.\n', numel(probs))
+    error('Mismatched audio and probs lengths');
+end
 
 % Error if the deactivation threshold is greater than the activation threshold.
-coder.internal.errorIf(options.DeactivationThreshold>=options.ActivationThreshold, ...
-    'audio:gavdnet:InvalidActivationPair');
+assert(deactivationThreshold < activationThreshold, ...
+    'Deactivation threshold must be < activationThreshold');
 
 % Convert thresholds in seconds to samples.
-options.MergeThreshold = isecond2sample(options.MergeThreshold, targetFs);
-options.LengthThreshold = isecond2sample(options.LengthThreshold, targetFs);
+mergeThreshold = isecond2sample(mergeThreshold, targetFs);
+lengthThreshold = isecond2sample(lengthThreshold, targetFs);
 
 % Create mask by applying activation and deactivation thresholds
-avdmask = iapplyThreshold(probs(:), options.ActivationThreshold, options.DeactivationThreshold);
+avdmask = iapplyThreshold(probs(:), activationThreshold, deactivationThreshold);
 
 % Convert frame-based mask to frame-based roi
 b1 = binmask2sigroi(avdmask);
@@ -101,20 +115,20 @@ boundaries = iframe2sample(b1, fileFs, timeResolution);
 boundaries = min(boundaries, numel(audioIn));
 
 % Apply energy-based detection refinement if requested
-if options.ApplyEnergyAVD
+if AEAVD
     boundaries = ienergyAVD(audioIn, fileFs, timeResolution, boundaries, numel(probs(:)), hopLen);
     boundaries = min(boundaries, numel(audioIn));
 end
 
 % Apply merge and length thresholds to sample-based boundaries
 if ~isempty(boundaries)
-    if options.MergeThreshold~=inf
-        b2 = mergesigroi(boundaries, options.MergeThreshold);
+    if mergeThreshold~=inf
+        b2 = mergesigroi(boundaries, mergeThreshold);
     else
         b2 = boundaries;
     end
-    if options.LengthThreshold~=0
-        b3 = removesigroi(b2, options.LengthThreshold);
+    if lengthThreshold~=0
+        b3 = removesigroi(b2, lengthThreshold);
     else
         b3 = b2;
     end

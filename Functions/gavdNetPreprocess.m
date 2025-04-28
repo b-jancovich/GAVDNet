@@ -1,4 +1,4 @@
-function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowDur, hopDur, mask)
+function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, bandwidth, windowLen, hopLen, mask)
 %GAVDNETPREPROCESS Preprocess audio for general animal vocalization detection network
 %   This function generates a mel spectrogram from the audio input, audioIn, 
 %   that can be fed to the pretrained network. If a signal presence mask 
@@ -10,13 +10,13 @@ function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, band
 %   fsIn        = the original sampling rate of 'x' (Hz)
 %   fsTarget    = the target sample rate for resampling 'x' (Hz)
 %   bandwidth   = the [min, max] frequency range of interest (Hz)
-%   windowDur   = the duration of the window function in the STFT (s)  
-%   hopDur      = the duration of the window hop in the STFT (s)
+%   windowLen   = the length of the window function in the STFT (samples)  
+%   hopLen      = the length of the window hop in the STFT (samples)
 %   mask        = (optional) binary mask in audio sample domain  
 % 
 %   Outputs:
 %   features      = The spectrogram, returned as a 40-by-T array, where T is the number of
-%                   time bins, dependent on windowDur, hopDur and the length of x.
+%                   time bins, dependent on windowLen, hopLen and the length of x.
 %   transformedMask = (optional) Mask transformed to spectrogram time-bin domain
 %
 % References:
@@ -38,8 +38,8 @@ arguments
     fsIn {validateattributes(fsIn,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','fsIn')}
     fsTarget {validateattributes(fsTarget,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','fsTarget')}
     bandwidth {validateattributes(bandwidth,{'single','double'},{'nonempty','vector','real','finite','positive'},'gavdNetPreprocess','bandwidth')}
-    windowDur {validateattributes(windowDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','windowDur')}
-    hopDur {validateattributes(hopDur,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','hopDur')}
+    windowLen {validateattributes(windowLen,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','windowLen')}
+    hopLen {validateattributes(hopLen,{'single','double'},{'nonempty','scalar','real','finite','positive'},'gavdNetPreprocess','hopLen')}
     mask = [] % Optional mask parameter
 end
 
@@ -61,12 +61,10 @@ else
 end
 
 % Calculate STFT params at target Fs
-windowLen = windowDur * fsTarget;
-hopLen = hopDur * fsTarget;
 overlapLen = windowLen - hopLen;
 
 % Set the FFT length at 2 * the next power of 2 larger than window length 
-FFTLen = 4 * 2^(ceil(log2(windowLen)));
+FFTLen = 8 * 2^(ceil(log2(windowLen)));
 
 % Error if signal is less than one window + one hop.
 % With padding, this means the minimum number of frames output is 4.

@@ -1,0 +1,54 @@
+clear all
+close all
+clc
+
+% Add paths
+addpath('C:\Users\z5439673\Git\GAVDNet\Functions');
+
+% Begin...
+fprintf('Loading audio...\n')
+
+% Load model
+load("C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_25-Apr-2025_15-19.mat")
+
+% Load config
+run("C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m")
+
+% Load audio
+[audio, fs] = audioread("C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav");
+
+% Report audio dimensions and fs
+fprintf('"audio" has size: %g x %g and sample rate %g\n', size(audio), fs)
+
+% Display audio spectrogram
+figure(1)
+spectrogram(audio, 200, 190, 2048, fs, 'yaxis')
+title('Input audio')
+
+% Run Preprocessing & Feature Extraction on audio
+fprintf('Preprocesing audio & extracting features...\n')
+[features, ~] = gavdNetPreprocess(...
+    audio, ...
+    fs, ...
+    model.preprocParams.fsTarget, ...
+    model.preprocParams.bandwidth, ...
+    model.preprocParams.windowLen,...
+    model.preprocParams.hopLen);
+
+% Report feautres dimensions
+fprintf('"feaures" has size: %g x %g\n', size(features))
+
+% Use the "minimum call duration" parameter from the training data as the
+% length threshold for post-processing:
+postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration;
+
+% Run Model in minibatch mode to save memory
+fprintf('Running model...\n')
+y = minibatchpredict(model.net, gpuArray(features));
+
+% Report audio dimensions and fs
+fprintf('Model probabilities vector "y" has size: %g x %g\n', size(y))
+
+% Run postprocessing to determine decision boundaries. 
+fprintf('Postprocesing model outputs...\n')
+gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);
