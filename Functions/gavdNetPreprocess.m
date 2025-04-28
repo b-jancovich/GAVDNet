@@ -46,7 +46,7 @@ end
 % Validate mask dimensions if provided
 if ~isempty(mask)
     if numel(mask) ~= numel(x)
-        error('gavdNetPreprocess:maskSizeMismatch', 'Mask must have the same dimensions as the audio input');
+        error('Mask must have the same dimensions as the audio input.');
     end
 end
 
@@ -68,16 +68,16 @@ FFTLen = 8 * 2^(ceil(log2(windowLen)));
 
 % Error if signal is less than one window + one hop.
 % With padding, this means the minimum number of frames output is 4.
-coder.internal.errorIf(numel(xx)<(windowLen+hopLen),'audio:gavdnet:SignalTooShort')
+assert(numel(xx) >= (windowLen+hopLen),'Signal is Too Short. Must be >= windowLen + hopLen')
 
 % Compute the spectrogram
-spec = icenteredPowerSTFT(xx, windowLen, hopLen, FFTLen);
+spectrogram = icenteredPowerSTFT(xx, windowLen, hopLen, FFTLen);
 
 % Process Spectrogram with Mel Filterbank
-SmeldB = imelSpectrogram(spec, fsTarget, FFTLen, bandwidth);
+spectroramMeldB = imelSpectrogram(spectrogram, fsTarget, FFTLen, bandwidth);
 
 % Standardize to zero mean and unity standard deviation
-features = istandardize(SmeldB);
+features = istandardize(spectroramMeldB);
 
 % Process mask if provided
 transformedMask = [];
@@ -99,7 +99,7 @@ end
 
 end
 
-function SmeldB = imelSpectrogram(S, fsTarget, FFTLen, bandwidth)
+function spectroramMeldB = imelSpectrogram(S, fsTarget, FFTLen, bandwidth)
 %imelSpectrogram Compute mel spectrogram in the style of vadnet
 
 % Design filter bank
@@ -116,14 +116,14 @@ if isempty(filterBank)
 end
 
 % Apply filter bank
-Smel = filterBank*S;
+spectrogramMel = filterBank*S;
 
 % Convert to dB
-SmeldB = 10*log10(max(Smel,1e-10));
+spectroramMeldB = 10*log10(max(spectrogramMel,1e-10));
 
 % Saturate at the max dB minus 80.
 topdB = 80;
-SmeldB = max(SmeldB,max(SmeldB(:)) - topdB);
+spectroramMeldB = max(spectroramMeldB,max(spectroramMeldB(:)) - topdB);
 
 end
 
@@ -145,7 +145,7 @@ x = [zeros(padLen,1,like=x); x(:); zeros(padLen,1,like=x)];
 % Half-sided STFT
 xb = audio.internal.buffer(x, windowLen, hopLen);
 Xtwosided = abs(fft(xb .* hammingwindow, FFTLen)).^2;
-if isempty(coder.target) && isa(x,'gpuArray')
+if isa(x,'gpuArray')
     z = head(Xtwosided,N);
 else
     z = Xtwosided(1:N,:);

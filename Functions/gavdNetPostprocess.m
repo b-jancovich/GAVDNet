@@ -63,7 +63,7 @@ arguments
     postprocParams (1,1) struct
 end
 
-if any(~isfield(preprocParams, {'fsTarget', 'hopDur', 'hopLen', 'windowLen'}))
+if any(~isfield(preprocParams, {'fsTarget', 'hopDur', 'hopLen', 'windowLen', 'bandwidth'}))
     error('Input argument "preprocParams" does not contain the correct fields.')
 end
 if any(~isfield(postprocParams, {'AT', 'DT', 'AEAVD', 'MT', 'LT'}))
@@ -88,6 +88,7 @@ targetFs = preprocParams.fsTarget; % The new rate for the audio, resampled befor
 hopDur = preprocParams.hopDur; % Duration of the STFT window hop (seconds)
 hopLen = preprocParams.hopLen; % Length of the STFT window hop (samples)
 windowLen = preprocParams.windowLen; % Length of the window function used to compute the STFT (samples)
+bandwidth = preprocParams.bandwidth; % Bandwidth of the mel spectrogram.
 
 % Time resolution of the spectrogram
 timeResolution = hopDur;
@@ -153,12 +154,12 @@ sampleroi = b3;
 % Convenience plot if no output requested.
 switch nargout
     case 0
-        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, hopLen);
+        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth);
     case 1
         varargout{1} = sampleroi;
     case 2
         varargout{1} = sampleroi;
-        varargout{2} = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), hopLen);
+        varargout{2} = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, bandwidth);
 end
 
 end
@@ -290,51 +291,83 @@ function prob = iclampProb(prob)
 prob = max(min(prob, 1), 0);
 end
 
-function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, hopLen)
+function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth)
 %conveniencePlot Convenience plot for gavdNetPostprocess
 
-% Create time vector
-t = (0:length(audioIn)-1)/fileFs;
 
-% Get axes handle and clear both left and right
-axeshandle = newplot;
-cla reset
+% Create time vector
+t_waveform = (0:length(audioIn)-1)/fileFs;
+
+% Create a tiled layout
+fig = figure;
+tl = tiledlayout(2, 1);
+
+% Create first tile for waveform
+ax1 = nexttile;
 
 % Plot the audio input against time
-plot(axeshandle, t, audioIn)
+plot(ax1, t_waveform, audioIn)
 grid on
 hold on
 ylabel('Amplitude')
 xlabel('Time (s)')
 
-% Add patches indicating the regions of detected vocalization
-amax = max(audioIn);
-amin = min(audioIn);
-for idx = 1:size(boundaries, 1)
-    xline(axeshandle, t(boundaries(idx,1)), Color=[0 0.4470 0.7410], LineWidth=1.2);
-    patch(axeshandle, [t(boundaries(idx,1)), t(boundaries(idx,1)), t(boundaries(idx,2)), t(boundaries(idx,2))], ...
-        [amin, amax, amax, amin], ...
-        [0.3010 0.7450 0.9330], ...
-        FaceAlpha=0.2, EdgeColor="none");
-    xline(axeshandle, t(boundaries(idx,2)), Color=[0 0.4470 0.7410], LineWidth=1.2);
-end
-axis tight
-
 % Plot the probability vector against time
 yyaxis right
 sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), hopLen);
-plot(axeshandle, t, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
+plot(ax1, t_waveform, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
 ylim([0,1])
 ylabel('Probability of target sound detection')
+title('Waveform & Probabilities')
+yyaxis left
+hold off
+
+% Add the spectrogram to tile 2
+ax2 = nexttile;
+
+% Set the FFT length at 2 * the next power of 2 larger than window length 
+FFTLen = 8 * 2^(ceil(log2(windowLen)));
+
+% Compute spectrogram
+[s, f, t_spectrogram] = spectrogram(audioIn, windowLen, hopLen, FFTLen, fileFs, 'yaxis');
+
+% Manually plot the spectrogram with correct time units
+imagesc(ax2, t_spectrogram, f, pow2db(abs(s).^2))
+axis tight
+
+% Set the y-axis limits according to bandwidth
+ylim(ax2, bandwidth)
+ylabel('Frequency (Hz)')
+xlabel('Time (s)')
+c = colorbar('Location', 'eastoutside');
+ylabel(c, 'Power (dB)')
+set(gca, "YDir", "normal")
+title('Spectrogram & Final Detection Boundaries')
+grid on
+
+% Add patches to the spectrogram, showing event boundaries
+for idx = 1:size(boundaries, 1)
+    % Calculate time values for boundaries
+    t_start = t_waveform(boundaries(idx,1));
+    t_end = t_waveform(boundaries(idx,2));
+
+    % Draw rectangles with red dotted outline and no fill
+    rectangle('Position', [t_start, bandwidth(1), t_end-t_start, bandwidth(2)-bandwidth(1)], ...
+        'EdgeColor', 'r', 'LineStyle', ':', 'LineWidth', 1.5);
+end
+
+% Make sure both plots have the same x range
+xlim(ax2, [min(t_waveform), max(t_waveform)])
+
+% Link the time axes of both plots
+linkaxes([ax1, ax2], 'x');
 
 % Add plot title
 if isempty(boundaries)
-    title('No Calls Detected')
+    sgtitle('No Calls Detected')
 else
-    title(sprintf('%g Detected Calls', size(boundaries, 1)))
+    sgtitle(sprintf('%g Detected Calls', size(boundaries, 1)))
 end
-yyaxis left
-hold off
 end
 
 function sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, N, hopLen)
