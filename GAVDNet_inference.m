@@ -47,7 +47,6 @@ end
 % Set the length threshold parameter for the post-processing equal to the 
 % duration of the shortest call in the training dataset.
 postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration;
-postProcOptions.LT = 13.632000000000000;
 
 %% Set up for GPU or CPU processing
 
@@ -66,10 +65,6 @@ if useGPU == true
 else
     ads_test.OutputEnvironment = 'cpu';
 end
-
-%% Load Groundtruth
-
-load(groundtruthPath)
 
 %% Run Model
 
@@ -91,6 +86,7 @@ while hasdata(ads_test)
         [audioIn, fileInfo] = read(ads_test);
     catch ME
         warning('Could not read file: %d\nError: %s. Skipping...\n', fileIdx, ME.message)
+        detections(fileIdx).failComment = 'Could not read valid audio from file';
         fileIdx = fileIdx + 1;
         continue
     end
@@ -111,6 +107,7 @@ while hasdata(ads_test)
             isnat(detections(fileIdx).fileStartDateTime)
         warning('Could not extract datetime from filename: %s. Skipping...\n',...
             detections(fileIdx).fileName)
+        detections(fileIdx).failComment = 'Could not read valid recording start data-time from filename';
         fileIdx = fileIdx + 1;
         continue
     end
@@ -118,6 +115,7 @@ while hasdata(ads_test)
     % Skip this file if it doesn't contain valid audio
     if isValidAudio(audioIn) == false
         warning('File %s did not contain valid audio. Skipping...\n', detections(fileIdx).fileName)
+        detections(fileIdx).failComment = 'Could not read valid audio from file';
         fileIdx = fileIdx + 1;
         continue
     end

@@ -25,11 +25,11 @@ noise_library_path = "D:\DGS_noise_library";
 gavdNetDataPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025";
 
 % Folder containing audio files to test on:
-testAudioPath = "D:\PGDetector_Test\DGS_2015_subset";
+testAudioPath = "D:\Diego Garcia South\DiegoGarcia2015\wav";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-groundtruthPath = "D:\PGDetector_Test\DGS_2015_subset\detections_H08S1_DiegoGarciaS_2015_cleaned_subset.mat";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\Manue_Chagos_RawData\DGS\detections_H08S1_DiegoGarciaS_2015.mat";
 
 % Results path for running inference
 inferenceOutputPath = "D:\PGDetector_Test\DGS_2015_subset";
@@ -61,7 +61,7 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 % callsPerSequence = 10;
 numSequences = 600;
 sequenceDuration = 3600;     % Duration of synthetic sequences (seconds)
-snrRange = [-18, 10];        % Range of SNRs in training data (dB)
+snrRange = [-20, 10];        % Range of SNRs in training data (dB)
 ICI = 190.79;                % Inter-Call-Interval (seconds) 
 ICI_variation = 1.49;        % Inter-Call-Interval +/- variation (seconds)
 
@@ -95,7 +95,7 @@ lrDropPeriod = 2;            % Period for learning rate drop (epochs)
 lrDropFac = 1;               % Learning rate drop factor
 
 % Feature Framing settings
-frameDuration = ICI;    % Duration of each frame passed to the network (seconds)
+frameDuration = 60;    % Duration of each frame passed to the network (seconds)
 frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Post processing parameters

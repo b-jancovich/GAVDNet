@@ -56,7 +56,7 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 
 plotting = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
