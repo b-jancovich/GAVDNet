@@ -19,7 +19,7 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -47,6 +47,7 @@ end
 % Set the length threshold parameter for the post-processing equal to the 
 % duration of the shortest call in the training dataset.
 postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration;
+postProcOptions.LT = 13.632000000000000;
 
 %% Set up for GPU or CPU processing
 
@@ -143,13 +144,13 @@ while hasdata(ads_test)
 
     % Run postprocessing to determine decision boundaries. 
     fprintf('Postprocesing model outputs...\n')
-    [detections(fileIdx).eventSampleBoundaries, probabilities, ...
-        detections(fileIdx).confidence, fig] = gavdNetPostprocess(...
+    [detections(fileIdx).eventSampleBoundaries, ~, ...
+        detections(fileIdx).confidence] = gavdNetPostprocess(...
         audioIn, detections(fileIdx).fileFs, probabilities, model.preprocParams, ...
         postProcOptions);
 
     % Get number of detections
-    detections(fileIdx).nDetections = length(detections(fileIdx).eventSampleBoundaries);
+    detections(fileIdx).nDetections = size(detections(fileIdx).eventSampleBoundaries, 1);
 
     % Get the datetime start and end times for each detected event using 
     if ~isempty(detections(fileIdx).eventSampleBoundaries)
@@ -164,6 +165,7 @@ while hasdata(ads_test)
             detections(fileIdx).eventTimesDT(detIdx, 2) = detections(fileIdx).sampleDomainTimeVector(eventEnd);
         end
     end
+     fprintf('Stored time indices for %g events that meet positive detection criteria.\n\n', detections(fileIdx).nDetections)
 
      % Increment the file index for the next iteration
      fileIdx = fileIdx + 1;
@@ -171,4 +173,8 @@ end
 
 % Detections are one row per audio file, potentially multiple detections per row.
 % Flatten detections to one row per detection.
-flatDetections = flattenDetections(detections);
+detections = flattenDetections(detections);
+
+% Save the output
+saveNamePath = fullfile(inferenceOutputPath, 'detector_results.mat');
+save(saveNamePath, 'detections', '-v7.3')

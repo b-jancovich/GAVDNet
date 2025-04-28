@@ -326,8 +326,10 @@ cleanSignalDurations = zeros(1, nCleanSigals);
 i = 1;
 while hasdata(ads_cleanSignals)
     [audio, audioInfo] = read(ads_cleanSignals);
-    cleanSignalDurations(i) = length(audio) / audioInfo.SampleRate;
-    i = i+1;
+    if isValidAudio(audio) == true
+        cleanSignalDurations(i) = length(audio) / audioInfo.SampleRate;
+        i = i + 1;
+    end
 end
 reset(ads_cleanSignals)
 

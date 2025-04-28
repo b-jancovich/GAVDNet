@@ -31,6 +31,9 @@ testAudioPath = "D:\PGDetector_Test\DGS_2015_subset";
 % detections of the target call in the test audio files:
 groundtruthPath = "D:\PGDetector_Test\DGS_2015_subset\detections_H08S1_DiegoGarciaS_2015_cleaned_subset.mat";
 
+% Results path for running inference
+inferenceOutputPath = "D:\PGDetector_Test\DGS_2015_subset";
+
 %% Call Characteristics
 
 % Frequency parameters for the target call
