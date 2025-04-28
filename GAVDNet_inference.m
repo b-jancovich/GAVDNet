@@ -1,11 +1,14 @@
-% Test VADNet
-
+% GAVDNet Inference
+%
+% Run audio files throught the trained model to detect the target animal
+% call.
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
-%
+% 
+
 %% Init
 
 clear
@@ -70,6 +73,7 @@ load(groundtruthPath)
 %% Run Model
 
 fileIdx = 1;
+reset(ads_test)
 while hasdata(ads_test)
     % Announce start
     fprintf('Running inference on file %d of %d...\n', fileIdx, length(ads_test.Files))
@@ -135,21 +139,36 @@ while hasdata(ads_test)
 
     % Run Model in minibatch mode to save memory
     fprintf('Running model...\n')
-    y = minibatchpredict(model.net, gpuArray(features));
+    probabilities = minibatchpredict(model.net, gpuArray(features));
 
     % Run postprocessing to determine decision boundaries. 
     fprintf('Postprocesing model outputs...\n')
-    boundaries = gavdNetPostprocess(audioIn, detections(fileIdx).fileFs, y, model.preprocParams, postProcOptions);
+    [detections(fileIdx).eventSampleBoundaries, probabilities, ...
+        detections(fileIdx).confidence, fig] = gavdNetPostprocess(...
+        audioIn, detections(fileIdx).fileFs, probabilities, model.preprocParams, ...
+        postProcOptions);
 
-    % Convert boundaries to a binary mask in the audio-sample-domain 
-    detections(fileIdx).sampleDomainPredictionsMask = double(sigroi2binmask(boundaries, size(audioIn, 1)));
+    % Get number of detections
+    detections(fileIdx).nDetections = length(detections(fileIdx).eventSampleBoundaries);
 
     % Get the datetime start and end times for each detected event using 
-    % the sampleDomainTimeVector and the sampleDomainPredictionsMask:
-    [eventStarts, eventEnds] = findEventBoundaries(detections(fileIdx).sampleDomainPredictionsMask);
-    detections(fileIdx).eventStartTimes = detections(fileIdx).sampleDomainTimeVector(eventStarts);
-    detections(fileIdx).eventEndTimes = detections(fileIdx).sampleDomainTimeVector(eventEnds);
-     
+    if ~isempty(detections(fileIdx).eventSampleBoundaries)
+        for detIdx = 1:detections(fileIdx).nDetections
+
+            % Get event boundaries (as sample indices)
+            eventStart = detections(fileIdx).eventSampleBoundaries(detIdx, 1);
+            eventEnd = detections(fileIdx).eventSampleBoundaries(detIdx, 2);
+
+            % Convert samples indices to datetime relative to file start.
+            detections(fileIdx).eventTimesDT(detIdx, 1) = detections(fileIdx).sampleDomainTimeVector(eventStart);
+            detections(fileIdx).eventTimesDT(detIdx, 2) = detections(fileIdx).sampleDomainTimeVector(eventEnd);
+        end
+    end
+
      % Increment the file index for the next iteration
      fileIdx = fileIdx + 1;
 end
+
+% Detections are one row per audio file, potentially multiple detections per row.
+% Flatten detections to one row per detection.
+flatDetections = flattenDetections(detections);

@@ -46,7 +46,14 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 %           a speech region, and the second column contains the index of 
 %           the end of a region.
 %   probs - Probability of speech per sample of the input audio signal, 
-%           returned as a column vector with the same size as the input signal.
+%           returned as a column vector with the same size as the input
+%           signal. (optional)
+%   confidence - Confidence scores for each detected region, returned as an
+%           N-by-1 vector, where N is the number of individual call regions.
+%           Each value represents the mean probability within the region. (optional)
+%   fig - a figure showing the input audio waveform and probabilities 
+%           vector in the top tile, and the spectrogram and event
+%           boundaries in the bottom tile. (optional)
 %
 %   gavdNetPostprocess(...) with no output arguments displays a plot of the
 %   detected vocalization regions in the input signal.
@@ -165,6 +172,20 @@ else
 end
 sampleroi = b3;
 
+% Convert probabilities to sample domain for confidence calculation
+sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
+
+% Calculate confidence for each region (mean probability within the region)
+confidence = [];
+if ~isempty(sampleroi)
+    confidence = zeros(size(sampleroi, 1), 1);
+    for i = 1:size(sampleroi, 1)
+        regionStart = sampleroi(i, 1);
+        regionEnd = min(sampleroi(i, 2), numel(sampleprob));
+        confidence(i) = mean(sampleprob(regionStart:regionEnd));
+    end
+end
+
 % Convenience plot if no output requested.
 switch nargout
     case 0
@@ -173,9 +194,17 @@ switch nargout
         varargout{1} = sampleroi;
     case 2
         varargout{1} = sampleroi;
-        varargout{2} = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
+        varargout{2} = sampleprob;
+    case 3
+        varargout{1} = sampleroi;
+        varargout{2} = sampleprob;
+        varargout{3} = confidence;
+    case 4
+        varargout{1} = sampleroi;
+        varargout{2} = sampleprob;
+        varargout{3} = confidence;
+        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth);
 end
-
 end
 
 function out = ienergyAVD(audioIn, fileFs, timeResolution, boundaries, numHops, hopLen)
