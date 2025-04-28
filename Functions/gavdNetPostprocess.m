@@ -53,6 +53,7 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
 %
+%% Input validation & unpacking
 
 arguments
     audioIn (:,1) {validateattributes(audioIn,{'single','double'},{'nonempty','vector','real','finite'},'gavdNetPostprocess','audioIn')}
@@ -60,6 +61,13 @@ arguments
     probs (:,1) {validateattributes(probs,{'single','double'},{'nonempty','vector','real','nonnan','finite'},'gavdNetPostprocess','probs')}
     preprocParams (1,1) struct
     postprocParams (1,1) struct
+end
+
+if any(~isfield(preprocParams, {'fsTarget', 'hopDur', 'hopLen', 'windowLen'}))
+    error('Input argument "preprocParams" does not contain the correct fields.')
+end
+if any(~isfield(postprocParams, {'AT', 'DT', 'AEAVD', 'MT', 'LT'}))
+    error('Input argument "preprocParams" does not contain the correct fields.')
 end
 
 % Parameters should not be on the GPU
@@ -79,12 +87,17 @@ lengthThreshold = postprocParams.LT;
 targetFs = preprocParams.fsTarget; % The new rate for the audio, resampled before stft (Hz)
 hopDur = preprocParams.hopDur; % Duration of the STFT window hop (seconds)
 hopLen = preprocParams.hopLen; % Length of the STFT window hop (samples)
+windowLen = preprocParams.windowLen; % Length of the window function used to compute the STFT (samples)
 
 % Time resolution of the spectrogram
 timeResolution = hopDur;
 
 % Validate that the audio duration is consistent with the probability vector
-expNumHops = floor(ceil(numel(audioIn) * targetFs / fileFs) / hopLen) + 1;
+% Account for padding (half window length at each end) in the preprocessing function
+padLen = round(windowLen/2);
+resampledAudioLength = ceil(numel(audioIn) * targetFs / fileFs);
+paddedLength = resampledAudioLength + (2 * padLen);
+expNumHops = floor((paddedLength - windowLen) / hopLen) + 1;
 if expNumHops ~= numel(probs)
     warning('Length of "audioIn" is %g samples with sample rate = %g Hz.\n', numel(audioIn), fileFs)
     fprintf('Preprocessor is resampling to %g Hz.\n', targetFs)
@@ -291,8 +304,8 @@ cla reset
 plot(axeshandle, t, audioIn)
 grid on
 hold on
-ylabel(getString(message('audio:convenienceplots:Amplitude')))
-xlabel(getString(message('audio:detectCalls:TimeAxis')))
+ylabel('Amplitude')
+xlabel('Time (s)')
 
 % Add patches indicating the regions of detected vocalization
 amax = max(audioIn);
@@ -312,13 +325,13 @@ yyaxis right
 sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), hopLen);
 plot(axeshandle, t, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
 ylim([0,1])
-ylabel(getString(message('audio:convenienceplots:Probability')))
+ylabel('Probability of target sound detection')
 
 % Add plot title
 if isempty(boundaries)
-    title(getString(message('audio:detectCalls:PlotTitleNoCalls')))
+    title('No Calls Detected')
 else
-    title(getString(message('audio:detectCalls:PlotTitle')))
+    title(sprintf('%g Detected Calls', size(boundaries, 1)))
 end
 yyaxis left
 hold off

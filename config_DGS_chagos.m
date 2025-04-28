@@ -97,15 +97,15 @@ frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Post processing parameters
 
-postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.6; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 %
-postProcOptions.DT = 0.25;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.4;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 %
-postProcOptions.AEAVD = true; % Apply Energy Animal Vocalisation Detection
+postProcOptions.AEAVD = false; % Apply Energy Animal Vocalisation Detection
 %                           Specifies whether to apply an energy-based 
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
