@@ -20,11 +20,17 @@ function [features, transformedMask] = gavdNetPreprocess(x, fsIn, fsTarget, band
 %   transformedMask = (optional) Mask transformed to spectrogram time-bin domain
 %
 % References:
-%   This function is a customised version of the MATLAB function
-%   "vadnetPreprocess", which itself is a port of code from the open 
-%   source code toolkit "SpeechBrain" [1]. 
+%   This function is based on the MATLAB function "vadnetPreprocess" [1, 2]
+%   That function is a port of code from the open source toolkit 
+%   "SpeechBrain" [3]. 
 %
-%   [1] Ravanelli, Mirco, et al. SpeechBrain: A General-Purpose Speech Toolkit. 
+%   [1] The MathWorks Inc. (2022-2024). Audio Toolbox version: 24.2 (R2024b), 
+%   Natick, Massachusetts: The MathWorks Inc. https://www.mathworks.com
+%
+%   [2] The MathWorks Inc. (2022-2024). Deep Learning Toolbox version: 24.2 (R2024b), 
+%   Natick, Massachusetts: The MathWorks Inc. https://www.mathworks.com
+%
+%   [3] Ravanelli, Mirco, et al. SpeechBrain: A General-Purpose Speech Toolkit. 
 %   arXiv, 8 June 2021. arXiv.org, http://arxiv.org/abs/2106.04624
 %
 % Ben Jancovich, 2024

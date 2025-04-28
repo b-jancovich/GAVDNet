@@ -1,8 +1,11 @@
 function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, postprocParams)
-% GAVDNETPOSTPROCESS Postprocess frame-based animal call detection probabilities
-
-% This funciton converts call probability per frame to roi boundaries in 
-% samples. 
+% This function converts the vector of detection probabilities (per 
+% spectrpgram frame) to region of interest (roi) boundaries in samples, and
+% applies heuristics to filter out detections that are of unrealisticlly 
+% short duration and merge detections that are likely not discrete. It also
+% sets the upper and lower probability thresholds for detections, and
+% features an optional energy-based detector to refine the detection
+% predictions made by the neural network.
 % 
 % Inputs: 
 %   audioIn - the audio the model is operating on
@@ -27,7 +30,15 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 %                       as a nonnegative scalar. 
 %                       - 'LT' (Length threshold): removes vocalization regions
 %                       that have a duration of LT seconds or less. Specify 
-%                       as a nonnegative scalar. 
+%                       as a nonnegative scalar. It is recommended to use 
+%                       the "minimum call duration" parameter used for 
+%                       training data synthesis. This value is stored in 
+%                       the trained model's metadata. You can try using 
+%                       smaller values if parts of your target call are 
+%                       frequently missing due to propagation effects or 
+%                       call variations that are not strongly represented 
+%                       in the synthetic training data.
+%
 % Outputs:
 %   roi - Call regions, returned as an N-by-2 matrix of indices into the 
 %           input signal, where N is the number of individual call regions 
@@ -41,13 +52,19 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 %   detected vocalization regions in the input signal.
 %
 % References:
-%   This function is a customised version of the MATLAB function
-%   "vadnetPostprocess", which itself is a port of code from the open 
-%   source code toolkit "SpeechBrain" [1]. 
+%   This function is based on the MATLAB function "vadnetPostprocess" [1, 2]
+%   That function is a port of code from the open source toolkit 
+%   "SpeechBrain" [3]. 
 %
-%   [1] Ravanelli, Mirco, et al. SpeechBrain: A General-Purpose Speech Toolkit. 
+%   [1] The MathWorks Inc. (2022-2024). Audio Toolbox version: 24.2 (R2024b), 
+%   Natick, Massachusetts: The MathWorks Inc. https://www.mathworks.com
+%
+%   [2] The MathWorks Inc. (2022-2024). Deep Learning Toolbox version: 24.2 (R2024b), 
+%   Natick, Massachusetts: The MathWorks Inc. https://www.mathworks.com
+%
+%   [3] Ravanelli, Mirco, et al. SpeechBrain: A General-Purpose Speech Toolkit. 
 %   arXiv, 8 June 2021. arXiv.org, http://arxiv.org/abs/2106.04624
-% 
+%
 % Ben Jancovich, 2024
 % Centre for Marine Science and Innovation
 % School of Biological, Earth and Environmental Sciences
