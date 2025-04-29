@@ -25,14 +25,14 @@ noise_library_path = "D:\DGS_noise_library";
 gavdNetDataPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025";
 
 % Folder containing audio files to test on:
-testAudioPath = "D:\Diego Garcia South\DiegoGarcia2015\wav";
+testAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\Manue_Chagos_RawData\DGS\detections_H08S1_DiegoGarciaS_2015.mat";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\test_dataset_audiofile_list.mat";
 
 % Results path for running inference
-inferenceOutputPath = "D:\PGDetector_Test\DGS_2015_subset";
+inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
 
 %% Call Characteristics
 
