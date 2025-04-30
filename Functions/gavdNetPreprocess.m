@@ -61,7 +61,9 @@ fsIn = gather(fsIn);
 
 % If fs of input differs from target Fs, resample audio
 if fsIn~=fsTarget
-    xx = cast(resample(double(x(:)),fsTarget,double(fsIn)),like=x);
+    % xx = cast(resample(double(x(:)), fsTarget, double(fsIn)), like=x);
+    [p, q] = rat(fsTarget/fsIn, 1e-9);  % Tighter tolerance
+    xx = cast(resample(double(x(:)), p, q), like=x);
 else
     xx = x(:);
 end
@@ -90,7 +92,9 @@ transformedMask = [];
 if ~isempty(mask)
     % Resample mask if sample rate changes
     if fsIn~=fsTarget
-        maskResamp = cast(resample(double(mask(:)),fsTarget,double(fsIn)),like=mask);
+        % maskResamp = cast(resample(double(mask(:)),fsTarget,double(fsIn)),like=mask);
+        [p, q] = rat(fsTarget/fsIn, 1e-9);  % Tighter tolerance
+        maskResamp = cast(resample(double(mask(:)), p, q), like=mask);
     else
         maskResamp = mask(:);
     end

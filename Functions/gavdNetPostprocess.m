@@ -1,4 +1,4 @@
-function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, postprocParams)
+function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, postprocParams, features)
 % This function converts the vector of detection probabilities (per 
 % spectrpgram frame) to region of interest (roi) boundaries in samples, and
 % applies heuristics to filter out detections that are of unrealisticlly 
@@ -85,6 +85,7 @@ arguments
     probs (:,1) {validateattributes(probs,{'single','double'},{'nonempty','vector','real','nonnan','finite'},'gavdNetPostprocess','probs')}
     preprocParams (1,1) struct
     postprocParams (1,1) struct
+    features = []
 end
 
 if any(~isfield(preprocParams, {'fsTarget', 'hopDur', 'hopLen', 'windowLen', 'bandwidth'}))
@@ -189,7 +190,7 @@ end
 % Convenience plot if no output requested.
 switch nargout
     case 0
-        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth);
+        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
     case 1
         varargout{1} = sampleroi;
     case 2
@@ -203,7 +204,7 @@ switch nargout
         varargout{1} = sampleroi;
         varargout{2} = sampleprob;
         varargout{3} = confidence;
-        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth);
+        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
 end
 end
 
@@ -356,7 +357,7 @@ function prob = iclampProb(prob)
 prob = max(min(prob, 1), 0);
 end
 
-function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth)
+function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth, features)
 %conveniencePlot Convenience plot for gavdNetPostprocess
 
 % Create time vector
@@ -390,14 +391,20 @@ hold off
 % Add the spectrogram to tile 2
 ax2 = nexttile;
 
-% Set the FFT length at 2 * the next power of 2 larger than window length 
-FFTLen = 8 * 2^(ceil(log2(windowLen)));
+% If the spectrogram is empty, recalculate it using the preprocessor
+if isempty(features)
+    [features, ~] = gavdNetPreprocess(audioIn, fileFs, targetFs, bandwidth, windowLen, hopLen);
+end
 
-% Compute spectrogram
-[s, f, t_spectrogram] = spectrogram(audioIn, windowLen, windowLen-hopLen, FFTLen, fileFs, 'yaxis');
+% Calculate the time and frequency vectors
+t_spectrogram = linspace(t_waveform(1), t_waveform(end), size(features, 2));
+lowMel = 1127.01048 * log(1 + bandwidth(1)/700);
+highMel = 1127.01048 * log(1 + bandwidth(2)/700);
+melPoints = linspace(lowMel, highMel, 40 + 2);
+f = 700 * (exp(melPoints(2:end-1)/1127.01048) - 1);
 
 % Manually plot the spectrogram with correct time units
-imagesc(ax2, t_spectrogram, f, pow2db(abs(s).^2))
+imagesc(ax2, t_spectrogram, f, features)
 axis tight
 
 % Set the y-axis limits according to bandwidth
