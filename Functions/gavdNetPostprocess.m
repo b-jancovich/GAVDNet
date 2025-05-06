@@ -138,8 +138,10 @@ assert(deactivationThreshold < activationThreshold, ...
     'Deactivation threshold must be < activationThreshold');
 
 % Convert thresholds in seconds to samples.
-mergeThreshold = isecond2sample(mergeThreshold, targetFs);
-lengthThreshold = isecond2sample(lengthThreshold, targetFs);
+% mergeThreshold = isecond2sample(mergeThreshold, targetFs);
+% lengthThreshold = isecond2sample(lengthThreshold, targetFs);
+mergeThreshold = isecond2sample(mergeThreshold, fileFs);
+lengthThreshold = isecond2sample(lengthThreshold, fileFs);
 
 % Create mask by applying activation and deactivation thresholds
 avdmask = iapplyThreshold(probs(:), activationThreshold, deactivationThreshold);

@@ -1,5 +1,5 @@
-% DATASET_SUBSAMPLING - Create a stratified test dataset for automated 
-% animal call detector.
+%% subsample_dataset_to_build_test_set.m
+% Create a stratified test dataset for automated animal call detector.
 %
 % This script creates a balanced, representative test dataset for evaluating 
 % an automated animal call detector by stratified subsampling from a 

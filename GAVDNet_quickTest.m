@@ -18,10 +18,10 @@ load("C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_202
 run("C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m")
 
 % Audio Path - File 1: target call
-% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
+audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
 
 % Audio Path - File 2: non-target call
-audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\NewZealand_BW_L7910NZ01_002K_Site04_multi_20160225_051500Z_15min.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\NewZealand_BW_L7910NZ01_002K_Site04_multi_20160225_051500Z_15min.wav";
 
 % Load audio
 [audio, fs] = audioread(audioPath);

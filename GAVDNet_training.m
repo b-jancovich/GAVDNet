@@ -72,11 +72,11 @@ addpath(fullfile(projectRoot, "Functions"))
 addpath(fullfile(gitRoot, 'customAudioAugmenter'));
 
 %% Start logging
-% 
-% % Begin logging
-% ts = char(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
-% logname = ['train_detector_network_log_', ts, '.txt'];
-% diary(fullfile(outputPath, logname));
+
+% Begin logging
+ts = char(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
+logname = ['train_detector_network_log_', ts, '.txt'];
+diary(fullfile(gavdNetDataPath, logname));
 
 %% Look for pre-generated audio, sequences, inputs and targets to reload
 
@@ -617,6 +617,7 @@ modelName = ['GAVDNet_trained_', tsEnd, '.mat'];
 save(fullfile(gavdNetDataPath, modelName), "model");
 
 disp('Done.')
+diary off
 
 %% Helper Functions
 

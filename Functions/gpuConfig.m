@@ -1,4 +1,4 @@
-function [useGPU, deviceID, numWorkers] = gpuConfig()
+function varargout = gpuConfig()
 % GPUCONFIG Configures system resources for machine learning tasks
 %   [useGPU, deviceID, numWorkers] = gpuConfig() optimizes system resources
 %   for machine learning by:
@@ -51,10 +51,10 @@ if numGPUs > 0
     fprintf('Selecting GPU %d with %.2f GB available memory\n', ...
         maxMemoryDeviceID, maxMemory / (1024^3));
     gpu = gpuDevice(maxMemoryDeviceID);
-    
+
     % Reset GPU to clear memory
     reset(gpu);
-    
+
     % Enable GPU caching for better performance
     if verLessThan('matlab', '9.8') % R2020a
         % Older versions use different settings
@@ -63,7 +63,7 @@ if numGPUs > 0
         % For newer MATLAB versions, use environment variables if needed
         setenv('CUDA_CACHE_MAXSIZE', '4294967296'); % 4GB cache
     end
-    
+
     % Set GPU buffer policy to grow as needed (R2019b and newer)
     if ~verLessThan('matlab', '9.7')
         % Use try-catch as this might not be available in all MATLAB versions
@@ -73,7 +73,7 @@ if numGPUs > 0
             warning('enableCUDABuffer not available in this MATLAB version');
         end
     end
-    
+
     useGPU = true;
     deviceID = maxMemoryDeviceID;
     disp('Datastores will output to GPU.');
@@ -91,7 +91,7 @@ if license('test', 'Distrib_Computing_Toolbox')
     numCores = feature('numcores');
     % Reserve some cores for system operations
     reservedCores = 1; % Reserve at least 1 core for system operations
-    
+
     % Calculate optimal number of workers based on system resources
     if useGPU
         % When using GPU, we need fewer CPU workers
@@ -100,15 +100,15 @@ if license('test', 'Distrib_Computing_Toolbox')
         % When CPU-only, use more workers
         optimalWorkers = max(1, numCores - reservedCores);
     end
-    
+
     % Get the current parallel cluster
     try
         c = parcluster('local');
         maxAllowedWorkers = c.NumWorkers;
-        
+
         % Respect the maximum allowed workers configuration
         optimalWorkers = min(optimalWorkers, maxAllowedWorkers);
-        
+
         % Check if parallel pool already exists
         poolObj = gcp('nocreate');
         if isempty(poolObj)
@@ -136,7 +136,7 @@ if license('test', 'Distrib_Computing_Toolbox')
     catch ME
         warning('GPUCONFIG:ParallelPoolSetupFailed', 'Parallel pool setup encountered an issue: %s', ME.message);
         fprintf('Continuing with default parallel settings\n');
-        
+
         % Try to get any existing pool
         try
             poolObj = gcp('nocreate');
@@ -184,13 +184,13 @@ switch memoryOpt
             arrayLocation = 'cpu';
         end
         fprintf('Memory configuration: Performance mode\n');
-        
+
     case 'balanced'
         % Balanced approach
         maxNumCompThreads('automatic');
         arrayLocation = 'cpu'; % Safer to use CPU for initial arrays
         fprintf('Memory configuration: Balanced mode\n');
-        
+
     case 'memory'
         % Memory conservative approach
         maxNumCompThreads(max(1, floor(numCores/2))); % Use fewer threads
@@ -217,7 +217,7 @@ if useGPU
             % Modern NVIDIA architectures supporting FP16
             halfPrecisionSupported = true;
         end
-        
+
         if halfPrecisionSupported
             % Enable fast math mode for machine learning (available in newer MATLAB)
             if ~isMATLABReleaseOlderThan("R2020a") % R2020b or newer
@@ -235,7 +235,7 @@ if useGPU
     catch
         warning('Could not determine GPU precision capabilities');
     end
-    
+
     % Check and use cudnn if available (for deep learning)
     if exist('cudnnGetVersion', 'file')
         try
@@ -273,6 +273,28 @@ fprintf('Parallel Workers: %d\n', numWorkers);
 fprintf('Memory Mode: %s\n', memoryOpt);
 fprintf('---------------------------\n\n');
 
+if useGPU == true
+    gpuInfo = gpuDevice(deviceID);
+    bytesAvailable = gpuInfo.AvailableMemory;
+else
+    bytesAvailable = memInfo.MemAvailableAllArrays;
+end
+
+if nargout == 2
+    varargout{1} = useGPU;
+    varargout{2} = deviceID;
+elseif nargout == 3
+    varargout{1} = useGPU;
+    varargout{2} = deviceID;
+    varargout{3} = numWorkers;
+elseif nargout == 4
+    varargout{1} = useGPU;
+    varargout{2} = deviceID;
+    varargout{3} = numWorkers;
+    varargout{4} = bytesAvailable;
+else
+    error('Invalid output arguments. This function returns 2, 3 or 4 output arguments.')
+end
 end
 
 % Helper function to enable CUDA buffer (only for newer MATLAB versions)
@@ -296,23 +318,23 @@ function result = validateGPUOperation(deviceID)
 try
     % Select the device
     gpuDevice(deviceID);
-    
+
     % Test 1: Simple matrix operation
     A = gpuArray(rand(1000));
     B = gpuArray(rand(1000));
     C = A * B;
     wait(gpuDevice); % Ensure computation completes
-    
+
     % Test 2: Memory transfer
     D = gather(C);
-    
+
     % Test 3: Check for NaN/Inf
     if any(isnan(D(:))) || any(isinf(D(:)))
         warning('GPU operation produced NaN or Inf values');
         result = false;
         return;
     end
-    
+
     result = true;
 catch ME
     warning('GPUCONFIG:ValidationFailed', 'GPU validation error: %s', ME.message);

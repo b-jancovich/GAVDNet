@@ -12,29 +12,27 @@
 %
 %% Data Paths and Locations
 
-% Path to high-quality, low-noise exemplar recording(s) of target call
+% Path to high-quality, low-noise exemplar recording(s) of target call to
+% be used as the source data to construct the synthetic training sequences.
 % Each file name must contain a string indicating the year it was 
 % recorded, in the format "-2016_":
 noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised";
 
 % Path to folder containing background noise samples (target call absent):
-% NOTE: noise library audio must have sample rate => sample rate of noiseless sample(s) 
+% NOTE: noise library audio must have sample rate => sample rate of 
+% noiseless sample(s) 
 noise_library_path = "D:\DGS_noise_library";
 
-% Output path for trained model and intermediate files:
+% Output path for trained model and intermediate training files:
 gavdNetDataPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025";
 
-% Folder containing audio files to test on:
-testAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
+% Folder containing audio files to run the detector on:
+inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
 
-% Path to "groundtruth" file containing date and time stamps of the true 
-% detections of the target call in the test audio files:
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\test_dataset_audiofile_list.mat";
-
-% Results path for running inference
+% Results path for inference
 inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
 
-%% Call Characteristics
+%% Target Call Characteristics
 
 % Frequency parameters for the target call
 initial_freq = 35.74;        % Mean frequency of the fundamental component (Hz)
@@ -43,7 +41,7 @@ pitch_shift_rate = 0.33;     % Annual frequency shift rate (Hz/year)
 pitch_shift_tol = 0.1;       % Additional tolerance for pitch shifting (Hz)
 detect_year_range = [2000, 2030]; % Time period represented by the synthetic dataset
 
-%% Audio Cleanup Parameters
+%% Input Audio Cleanup Parameters
 
 % Pre-augmentation "noiseless_samples" processing
 preAugfadeIn = 0.2;          % Duration of fade-in (seconds)
@@ -55,7 +53,7 @@ trim_threshold_ratio = 0.025; % Ratio threshold for silence detection
 trim_window_size = 10;        % Sliding window size for silence trimming
 postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 
-%% Sequence Construction Parameters
+%% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
 % callsPerSequence = 10;
@@ -98,13 +96,13 @@ lrDropFac = 1;               % Learning rate drop factor
 frameDuration = 60;    % Duration of each frame passed to the network (seconds)
 frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
-%% Post processing parameters
+%% Inference Post-Pprocessing Parameters
 
 postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 %
-postProcOptions.DT = 0.4;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.25;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 %
@@ -113,6 +111,10 @@ postProcOptions.AEAVD = false; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 %
-postProcOptions.MT = 2;     % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 1;     % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
+
+%% Ground Truth Comparison Parameters
+
+detectionTolerance = 30;
