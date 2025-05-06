@@ -58,9 +58,11 @@ else
     load(fullfile(location, file))
 end
 
-% Set the length threshold parameter for the post-processing equal to the 
-% 85% of the duration of the shortest call in the training dataset. 
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* 0.85;
+% Set the length threshold parameter for the post-processing.
+% Use the shortest call in the training set, multiplied by the scaling
+% factor set in config:
+postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
+    postProcOptions.LT_scaler;
 
 %% Set up for GPU or CPU processing
 
