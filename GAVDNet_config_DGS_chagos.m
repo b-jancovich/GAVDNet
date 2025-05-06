@@ -98,7 +98,7 @@ frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Inference Post-Pprocessing Parameters
 
-postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.4; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 %
@@ -111,7 +111,7 @@ postProcOptions.AEAVD = false; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 %
-postProcOptions.MT = 1;     % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.5;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
