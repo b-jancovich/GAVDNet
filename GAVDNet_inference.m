@@ -196,18 +196,21 @@ if ~exist(saveNamePathRaw, 'file')
     fprintf('Saved %g detections to %s\n', length(results), inferenceOutputPath)
 
 else
+    fprintf('Found file containing raw model outputs. Loading... \n')
+
     % Load the pre-saved raw results
     load(saveNamePathRaw)
 end
 
 %% Reload and post-process the raw predictions to get detections and confidence scores.
 
+fprintf('Postprocesing model outputs...\n')
 for i = 1:length(results)
 
+    % Get audio for this file:
     [audioIn, ~] = audioread(fullfile(inferenceAudioPath, results(i).fileName));
 
     % Run postprocessing to determine decision boundaries. 
-    fprintf('Postprocesing model outputs...\n')
     [results(i).eventSampleBoundaries, ~, ...
         results(i).confidence] = gavdNetPostprocess(...
         audioIn, results(i).fileFs, results(i).probabilities, model.preprocParams, ...
@@ -229,7 +232,7 @@ for i = 1:length(results)
             results(i).eventTimesDT(detIdx, 2) = results(i).sampleDomainTimeVector(eventEnd);
         end
     end
-     fprintf('File %g: %g events detected\n\n', i, results(i).nDetections)
+     fprintf('File %g: %g events detected\n', i, results(i).nDetections)
 end
 
 % Detections are one row per audio file, potentially multiple detections per row.

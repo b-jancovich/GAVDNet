@@ -12,7 +12,7 @@ clc
 addpath('C:\Users\z5439673\Git\GAVDNet\Functions');
 
 % Load model
-load("C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_28-Apr-2025_18-11.mat")
+load("C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_23-May-2025_14-52.mat")
 
 % Load config
 run("C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m")
@@ -30,7 +30,7 @@ audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale
 % information, stored in the model metadata as the length threshold for 
 % post-processing. You can try using smaller values for this if parts of 
 % your target call are frequently missing due to propagation effects.
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration;
+postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration * postProcOptions.LT_scaler;
 
 % Run Preprocessing & Feature Extraction on audio
 fprintf('Preprocesing audio & extracting features...\n')

@@ -27,10 +27,10 @@ noise_library_path = "D:\DGS_noise_library";
 gavdNetDataPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025";
 
 % Folder containing audio files to run the detector on:
-inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
+inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\TestSubset";
 
 % Results path for inference
-inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
+inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Results";
 
 %% Target Call Characteristics
 
@@ -56,22 +56,21 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-% callsPerSequence = 10;
 numSequences = 600;
 sequenceDuration = 3600;     % Duration of synthetic sequences (seconds)
-snrRange = [-20, 10];        % Range of SNRs in training data (dB)
-ICI = 190.79;                % Inter-Call-Interval (seconds) 
+ICI = 60;                    % Inter-Call-Interval (seconds) 
 ICI_variation = 1.49;        % Inter-Call-Interval +/- variation (seconds)
+snrRange = [-20, 10];        % Range of SNRs in training data (dB)
 
 %% Data Augmentation Parameters
 
 % Parameters for augmenting clean samples
-c = 1500;                   % Typical sound propagation velocity (m/s)
-speedup_factor_range = [0.97, 1.02]; % Time stretching factor range
-lpf_cutoff_range = [38, 50];         % Low-pass filter cutoff range (Hz)
-source_velocity_range = [1, 30];      % Source velocity range for Doppler (m/s)
-distortionRange = [0.1, 0.4];        % Nonlinear distortion magnitude range
-decayTimeRange = [0.1, 3];           % Reverberation decay time range (s)
+c = 1500;                               % Typical sound propagation velocity (m/s)
+speedup_factor_range = [0.97, 1.02];    % Time stretching factor range
+lpf_cutoff_range = [38, 50];            % Low-pass filter cutoff range (Hz)
+source_velocity_range = [1, 30];        % Source velocity range for Doppler (m/s)
+distortionRange = [0.1, 0.4];           % Nonlinear distortion magnitude range
+decayTimeRange = [0.1, 3];              % Reverberation decay time range (s)
 trans_loss_strength_range = [0.1, 0.3]; % Transmission loss magnitude range
 trans_loss_density_range = [0.1, 0.2];  % Transmission loss event density range
 
@@ -80,20 +79,21 @@ trans_loss_density_range = [0.1, 0.2];  % Transmission loss event density range
 % Feature extraction parameters for gavdNetPreprocess
 fsTarget = 250;              % Target sample rate for feature extraction (Hz)
 bandwidth = [10, 60];        % Frequency bandwidth for spectrograms (Hz)
-windowDur = 0.85;            % STFT window duration (seconds)
+windowDur = 0.85;             % STFT window duration (seconds)
 hopDur = 0.05;               % STFT hop duration (seconds)
 
 % Training hyperparameters
 trainPercentage = 85;        % Percentage of data used for training vs. validation
-miniBatchSize = 12;          % Number of training samples per iteration
+miniBatchSize = 16;          % Number of training samples per iteration
 maxEpochs = 9;               % Maximum number of training epochs
-valPatience = 5;             % Validation patience (n validation tests)
-lrInitial = 0.01;            % Initial learning rate
+valPatience = 8;             % Validation patience (n validation tests)
+lrInitial = 0.005;           % Initial learning rate
 lrDropPeriod = 2;            % Period for learning rate drop (epochs)
-lrDropFac = 1;               % Learning rate drop factor
+lrDropFac = 0.5;             % Learning rate drop factor
+l2RegFac = 1e-4;             % L2 Regularization Factor
 
 % Feature Framing settings
-frameDuration = 60;    % Duration of each frame passed to the network (seconds)
+frameDuration = 60;         % Duration of each frame passed to the network (seconds)
 frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Inference Post-Pprocessing Parameters
@@ -101,23 +101,23 @@ frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
-%
-postProcOptions.DT = 0.25;  % Deactivation Threshold. Sets the probability 
+
+postProcOptions.DT = 0.35;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
-%
+
 postProcOptions.AEAVD = false; % Apply Energy Animal Vocalisation Detection
 %                           Specifies whether to apply an energy-based 
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
-%
-postProcOptions.MT = 1;   % Merge Threshold. Merges vocalization regions
+
+postProcOptions.MT = 3;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.4; % the Length threshold is set based on 
+postProcOptions.LT_scaler = 0.5; % the Length threshold is set based on 
 %                           the length of the shortest song in the training
-%                           set, scaled by this number.
+%                           set, scaled by this number
 
 %% Ground Truth Comparison Parameters
 
