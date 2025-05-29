@@ -11,13 +11,23 @@ clear persistent
 
 % Path to the config file:
 configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
-inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Results\detector_results_postprocessed.mat";
+% Path to inference output file:
+inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\detector_results_postprocessed.mat";
+% inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\detector_results_postprocessed.mat";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\TestSubset\test_dataset_detection_list.mat";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\TestSubset\test_dataset_detection_list.mat";
+% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset\Casey2014.Bm.Ant-Z.selections_SUBSET.txt";
 
+% Results path for comparison of detector output with groundtruth
+gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\groundtruthComparisonResults.xlsx";
+% gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\groundtruthComparisonResults.xlsx";
+
+% Test dataset source
+dataset = 'CTBTO'; % Either "CTBTO" or "SORP"
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
@@ -29,6 +39,51 @@ projectRoot = pwd;
 [gitRoot, ~, ~] = fileparts(projectRoot);
 addpath(fullfile(projectRoot, "Functions"))
 
-%% Compare results
+%% Load model
 
-metrics = compareDetectionsToSubsampledTestDataset(groundtruthPath, inferenceResultsPath, detectionTolerance);
+% Handle multiple model files with a UI dialog:
+modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
+if isscalar(modelList)
+    load(fullfile(modelList.folder, modelList.name))
+    fprintf('Loading model: %s\n', modelList.name)
+else
+    [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
+    load(fullfile(location, file))
+end
+
+% Get LT & LT scaler post proc parameters
+maxDetectionDuration = model.dataSynthesisParams.maxTargetCallDuration;
+postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
+    postProcOptions.LT_scaler;
+
+%% Compare Detector Output to Groundtruth
+
+% Run groundtruth comparison
+switch dataset 
+    case 'CTBTO'
+        [metrics, FP, FN] = compareDetectionsToSubsampledTestDatasetCTBTO(groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration);
+    case 'SORP'
+        [metrics, FP, FN] = compareDetectionsToSubsampledTestDatasetSORP(groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration);
+end
+
+%% Save Results
+
+% Compile results and test params
+testCompleteTime = string(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
+outTable = struct2table(metrics);
+outTable = removevars(outTable, {'roc', 'performanceCurve'});
+newNames = {'ActivationThreshold', 'DeactivationThreshold', 'AEAVD', ...
+    'MergeThreshold', 'LengthThresholdScaler', 'LengthThreshold', ...
+    'TestTimeStamp'};
+outTable = addvars(outTable, postProcOptions.AT, postProcOptions.DT, ...
+    postProcOptions.AEAVD, postProcOptions.MT, postProcOptions.LT_scaler, ...
+    postProcOptions.LT, testCompleteTime, 'NewVariableNames', newNames);
+
+% Write output to CSV
+if exist(gtCompareResultsPath, 'file') == 2
+    % Append data without headers
+    writetable(outTable, gtCompareResultsPath, 'WriteMode', 'append', 'WriteVariableNames', false);
+else
+    % File does not exist — write with headers
+    writetable(outTable, gtCompareResultsPath);
+end

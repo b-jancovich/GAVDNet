@@ -56,7 +56,8 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 plotting = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -604,7 +605,7 @@ net = audioPretrainedNetwork("vadnet");
 analyzeVADNetFreezing(net)
 
 % Unfreeze GRU1 with a custom learn rate factor
-net = unfreezeGRULayers(net, 'gru1');
+net = unfreezeGRULayers(net, 'all');
 
 % Begin transfer learning
 [model.net, model.trainInfo] = trainnet(trainDS, net, "binary-crossentropy", options);

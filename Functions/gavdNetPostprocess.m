@@ -386,7 +386,7 @@ sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), windo
 plot(ax1, t_waveform, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
 ylim([0,1])
 ylabel('Probability of target sound detection')
-title('Waveform & Probabilities')
+title('Input Waveform & Raw Probabilities')
 yyaxis left
 hold off
 
@@ -416,7 +416,7 @@ xlabel('Time (s)')
 c = colorbar('Location', 'eastoutside');
 ylabel(c, 'Power (dB)')
 set(gca, "YDir", "normal")
-title('Spectrogram & Final Detection Boundaries')
+title('Spectrogram & Detection Boundaries (After Post-Processing)')
 grid on
 
 % Add patches to the spectrogram, showing event boundaries

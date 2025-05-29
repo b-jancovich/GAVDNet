@@ -12,18 +12,23 @@ clc
 addpath('C:\Users\z5439673\Git\GAVDNet\Functions');
 
 % Load model
-load("C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_23-May-2025_14-52.mat")
+% modelPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_27-May-2025_18-06.mat";
+modelPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\GAVDNet_trained_28-May-2025_23-29.mat";
 
-% Load config
-run("C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m")
+% config Path
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Audio Path - File 1: target call
-audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
+audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\BmAnt_ZCall_Casey_2014-03-30_04-00-00.wav";
 
 % Audio Path - File 2: non-target call
 % audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\NewZealand_BW_L7910NZ01_002K_Site04_multi_20160225_051500Z_15min.wav";
 
-% Load audio
+% Load Config, Model & audio
+load(modelPath)
+run(configPath)
 [audio, fs] = audioread(audioPath);
 
 % Use the "minimum call duration" parameter from the training data synthesis 

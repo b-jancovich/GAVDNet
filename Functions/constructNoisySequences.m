@@ -117,7 +117,7 @@ function noise = readNoiseSegment(ads_noise, duration, fs)
     % Read noise segment
     noiseSamplesNeeded = round(duration * fs);
     noise = [];
-    
+    failCount = 0;
     while length(noise) < noiseSamplesNeeded
         try
             [chunk, ~] = read(ads_noise);
@@ -127,8 +127,15 @@ function noise = readNoiseSegment(ads_noise, duration, fs)
                 noise = [noise; chunk];
             end
         catch
-            % Skip file if there's an error reading it
-            continue;
+            failCount = failCount + 1;
+            % if we have a file read error, skip this file.
+            if failCount < 100
+                continue
+            else
+                disp('Resetting ADS...')
+                reset(ads_noise)
+                failCount = 0;
+            end
         end
     end
     
