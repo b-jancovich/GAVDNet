@@ -87,3 +87,10 @@ else
     % File does not exist — write with headers
     writetable(outTable, gtCompareResultsPath);
 end
+
+% Save disagreements
+disagreements = struct('falsePositives', FP, 'falseNegatives', FN);
+[resultsFolder, ~, ~] = fileparts(gtCompareResultsPath);
+saveNamePath = fullfile(resultsFolder,...
+    strcat('detector_vs_GT_disagreements_', testCompleteTime, '.mat'));
+save(saveNamePath, 'disagreements', '-v7.3')

@@ -98,11 +98,11 @@ frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Inference Post-Pprocessing Parameters
 
-postProcOptions.AT = 0.4; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.25; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.2;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.1;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -111,11 +111,11 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 1;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.5;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.5; % the Length threshold is set based on 
+postProcOptions.LT_scaler = 0.25; % the Length threshold is set based on 
 %                           the length of the shortest song in the training
 %                           set, scaled by this number
 
