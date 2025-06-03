@@ -27,7 +27,8 @@ noise_library_path = "D:\SORP_BmAntZ_noise_library";
 gavdNetDataPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP";
 
 % Folder containing audio files to run the detector on:
-inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset";
+% inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset";
+inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav";
 
 % Results path for inference
 inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results";
@@ -58,7 +59,7 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 % Parameters for building synthetic training sequences
 numSequences = 600;
 sequenceDuration = 3600;     % Duration of synthetic sequences (seconds)
-ICI = 60;                    % Inter-Call-Interval (seconds) 
+ICI = 40;                    % Inter-Call-Interval (seconds) 
 ICI_variation = 5;        % Inter-Call-Interval +/- variation (seconds)
 snrRange = [-20, 10];        % Range of SNRs in training data (dB)
 
@@ -78,7 +79,7 @@ trans_loss_density_range = [0.1, 0.2];  % Transmission loss event density range
 
 % Feature extraction parameters for gavdNetPreprocess
 fsTarget = 250;             % Target sample rate for feature extraction (Hz)
-bandwidth = [20, 50];       % Frequency bandwidth for spectrograms (Hz)
+bandwidth = [5, 45];       % Frequency bandwidth for spectrograms (Hz)
 windowDur = 1;              % STFT window duration (seconds)
 hopDur = 0.05;              % STFT hop duration (seconds)
 
@@ -98,11 +99,11 @@ frameOverlapPercent = 0.5;  % Overlap of each frame (percent of frameDuration)
 
 %% Inference Post-Pprocessing Parameters
 
-postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.3; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.2;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.15;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -111,11 +112,11 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 1.5;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 1;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.75; % the Length threshold is set based on 
+postProcOptions.LT_scaler = 0.25; % the Length threshold is set based on 
 %                           the length of the shortest song in the training
 %                           set, scaled by this number. Length threshold
 %                           defines the minimum duration of high detection

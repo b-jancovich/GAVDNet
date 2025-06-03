@@ -10,24 +10,25 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Path to inference output file:
-inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\detector_results_postprocessed.mat";
-% inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\detector_results_postprocessed.mat";
+% inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\detector_results_postprocessed.mat";
+inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\detector_results_postprocessed.mat";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\TestSubset\test_dataset_detection_list.mat";
+% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\TestSubset\test_dataset_detection_list.mat";
 % groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset\Casey2014.Bm.Ant-Z.selections_SUBSET.txt";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 
 % Results path for comparison of detector output with groundtruth
-gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\groundtruthComparisonResults.xlsx";
-% gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\groundtruthComparisonResults.xlsx";
+% gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\groundtruthComparisonResults.xlsx";
+gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\groundtruthComparisonResults.xlsx";
 
 % Test dataset source
-dataset = 'CTBTO'; % Either "CTBTO" or "SORP"
+dataset = 'SORP'; % Either "CTBTO" or "SORP"
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
@@ -94,3 +95,5 @@ disagreements = struct('falsePositives', FP, 'falseNegatives', FN);
 saveNamePath = fullfile(resultsFolder,...
     strcat('detector_vs_GT_disagreements_', testCompleteTime, '.mat'));
 save(saveNamePath, 'disagreements', '-v7.3')
+
+

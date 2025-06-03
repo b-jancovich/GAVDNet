@@ -92,8 +92,7 @@ transformedMask = [];
 if ~isempty(mask)
     % Resample mask if sample rate changes
     if fsIn~=fsTarget
-        % maskResamp = cast(resample(double(mask(:)),fsTarget,double(fsIn)),like=mask);
-        [p, q] = rat(fsTarget/fsIn, 1e-9);  % Tighter tolerance
+        [p, q] = rat(fsTarget/fsIn, 1e-9);
         maskResamp = cast(resample(double(mask(:)), p, q), like=mask);
     else
         maskResamp = mask(:);
@@ -103,8 +102,16 @@ if ~isempty(mask)
     padLen = round(windowLen/2);
     maskPadded = [zeros(padLen, 1, like=maskResamp); maskResamp; zeros(padLen, 1, like=maskResamp)];
     
-    % Buffer the mask to match the spectrogram time bins
-    transformedMask = mode(buffer(maskPadded, windowLen, overlapLen, "nodelay"), 1);
+    % % Buffer the mask to match the spectrogram time bins
+    % transformedMask = mode(buffer(maskPadded, windowLen, overlapLen, "nodelay"), 1);
+    % This method results in 1 more time bins than the features due to
+    % different handling of frame length.
+
+    % Buffer the mask using the same function as STFT for consistent frame handling
+    maskBuffered = audio.internal.buffer(maskPadded, windowLen, hopLen);
+    
+    % Take the mode of each frame to get the dominant mask value per time bin
+    transformedMask = mode(maskBuffered, 1);
 end
 
 end
