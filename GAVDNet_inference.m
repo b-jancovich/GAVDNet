@@ -4,17 +4,17 @@
 % call.
 %
 % Mode inference runs on audio files in a loop, then saves raw results to
-% disk (raw results = probabilities for target call pressence per STFT time 
+% disk (raw results = probabilities for target call pressence per STFT time
 % bin). The post processing procedure that converts these raw probabilities
 % into discrete detection boundaries is run in a second loop after
 % reloading the raw data. The script is built this way so that post
-% processing parameters can be iteratively fine tuned without having to run 
+% processing parameters can be iteratively fine tuned without having to run
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
-% 
+%
 
 %% Init
 
@@ -26,9 +26,11 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
+
+inferenceMode = 'framed'; % 'normal', 'framed', 'event-split'
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
@@ -62,7 +64,7 @@ end
 % Set the length threshold parameter for the post-processing.
 % Use the shortest call in the training set, multiplied by the scaling
 % factor set in config:
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
+postProcOptions.LT = max(model.dataSynthesisParams.minTargetCallDuration, 2) .* ...
     postProcOptions.LT_scaler;
 
 %% Set up for GPU or CPU processing
@@ -90,7 +92,7 @@ saveNamePathRaw = fullfile(inferenceOutputPath, 'detector_raw_results.mat');
 % confidence scores)
 saveNamePathFinal = fullfile(inferenceOutputPath, 'detector_raw_results.mat');
 
-%% Run Model
+%% Run Model on each audio file
 
 % If raw results have been saved, load raw results, if not, run inference now:
 if ~exist(saveNamePathRaw, 'file')
@@ -101,13 +103,13 @@ if ~exist(saveNamePathRaw, 'file')
     while hasdata(ads_test)
         % Announce start
         fprintf('Running inference on file %d of %d...\n', fileIdx, length(ads_test.Files))
-        
+
         % Clear GPU memory from previous iteration
         if useGPU
             wait(gpuDevice(gpuDeviceID)); % Wait for operations on the selected GPU
             reset(gpuDevice(gpuDeviceID)); % Reset the selected GPU
         end
-    
+
         % Read audio file
         fprintf('\tReading audio...\n')
         try
@@ -118,18 +120,19 @@ if ~exist(saveNamePathRaw, 'file')
             fileIdx = fileIdx + 1;
             continue
         end
-    
+
         % Write filename, Fs and file info to detections struct
         [~, fileName, fileExt] = fileparts(fileInfo.FileName);
         results(fileIdx).fileName = [fileName, fileExt];
         results(fileIdx).fileFs = fileInfo.SampleRate;
         results(fileIdx).fileSamps = length(audioIn);
         results(fileIdx).fileDuration = results(fileIdx).fileSamps / results(fileIdx).fileFs;
-    
+        results(fileIdx).probabilities = [];
+
         % Extract datetime from filename
         fprintf('\tExtracting datetime stamp from audio filename...\n')
         results(fileIdx).fileStartDateTime = extractDatetimeFromFilename(fileInfo.FileName, 'datetime');
-    
+
         % Skip this file if it's name doesn't contain a valid start date
         if isempty(results(fileIdx).fileStartDateTime) ||...
                 isnat(results(fileIdx).fileStartDateTime)
@@ -139,7 +142,7 @@ if ~exist(saveNamePathRaw, 'file')
             fileIdx = fileIdx + 1;
             continue
         end
-    
+
         % Skip this file if it doesn't contain valid audio
         if isValidAudio(audioIn) == false
             warning('\tFile %s did not contain valid audio. Skipping...\n', results(fileIdx).fileName)
@@ -147,47 +150,164 @@ if ~exist(saveNamePathRaw, 'file')
             fileIdx = fileIdx + 1;
             continue
         end
-    
+
         % Construct Datetime vector for the audio (sample-domain)
         results(fileIdx).sampleDomainTimeVector = createDateTimeVector(...
             results(fileIdx).fileStartDateTime,...
             results(fileIdx).fileSamps, ...
             results(fileIdx).fileFs);
-    
-        % Run Preprocessing & Feature Extraction on audio
-        fprintf('\tPreprocesing audio & extracting features...\n')
-        [features, ~] = gavdNetPreprocess(...
-            audioIn, ...
-            results(fileIdx).fileFs, ...
-            model.preprocParams.fsTarget, ...
-            model.preprocParams.bandwidth, ...
-            model.preprocParams.windowLen,...
-            model.preprocParams.hopLen);
-        
-        % Calculate maximum batch size for LSTM model with very conservative memory estimate
-        bytesPerSample = numel(features)/size(features,1) * 4 * 20;
-        batchSize = floor(bytesAvailable / bytesPerSample);
-        batchSize = 2^floor(log2(batchSize)); % round to power of 2
 
-        % Run Model in minibatch mode to save memory
-        fprintf('\tRunning model...\n')
-        tic
-        if useGPU == true
-            % Run model & Move output back to CPU from GPU
-            results(fileIdx).probabilities = gather(minibatchpredict(model.net, features), 'MiniBatchSize', batchSize);
-        else
-            % Run model
-            results(fileIdx).probabilities = minibatchpredict(model.net, features);
+        % From here, processing is dependent on 'mode':
+        switch inferenceMode
+
+            % The whole signal's spectrogram is computed, and passed to
+            % minibatchpredict() in one chunk.
+            case 'normal'
+                % Run Preprocessing & Feature Extraction on audio
+                fprintf('\tPreprocesing audio & extracting features...\n')
+                features = gavdNetPreprocess(...
+                    audioIn, ...
+                    results(fileIdx).fileFs, ...
+                    model.preprocParams.fsTarget, ...
+                    model.preprocParams.bandwidth, ...
+                    model.preprocParams.windowLen,...
+                    model.preprocParams.hopLen, ...
+                    model.preprocParams.saturationRange);
+
+                % Estimate Minibatch Size
+                T = size(features, 2);
+                optimalMinibatchSize = estimateInferenceMinibatchSize(bytesAvailable, T);
+
+                fprintf('\tRunning features through model...')
+                tic
+                % Run model
+                results(fileIdx).probabilities = minibatchpredict(model.net, ...
+                    features, 'SequenceLength', 'shortest', ...
+                    'MiniBatchSize', optimalMinibatchSize);
+                % Move output back to CPU
+                if isgpuarray(results(fileIdx).probabilities)
+                    results(fileIdx).probabilities = gather(results(fileIdx).probabilities);
+                end
+                execTime = toc;
+                fprintf('\n')
+
+            case 'event-split'
+                % Audio is split into segments based on signal stats, then each
+                % segment's spectrogram is computed and passed to predict:
+
+                % Split audio into segments based on signal statistics
+                smoothingWindowDuration = model.dataSynthesisParams.maxTargetCallDuration * 4;
+                eventOverlapDuration = model.dataSynthesisParams.maxTargetCallDuration;
+                [audioSegments, splitIndices, changePtsIndices] = eventSplitter(...
+                    audioIn, results(fileIdx).fileFs, smoothingWindowDuration, eventOverlapDuration);
+
+                featuresSegments = cell(size(audioSegments));
+                for i = 1:length(audioSegments)
+                    fprintf('\tPreprocesing audio & extracting features for segment %d of %d...\n',...
+                        i, length(audioSegments))
+                    % Run Preprocessing & Feature Extraction on audio
+                    featuresSegments{i} = gavdNetPreprocess(...
+                        audioSegments{i}, ...
+                        results(fileIdx).fileFs, ...
+                        model.preprocParams.fsTarget, ...
+                        model.preprocParams.bandwidth, ...
+                        model.preprocParams.windowLen,...
+                        model.preprocParams.hopLen, ...
+                        model.preprocParams.saturationRange);
+                end
+
+                % Run each frame through the model
+                probs = cell(size(featuresSegments));
+                fprintf('\tRunning frames through model.')
+                tic
+                for i = 1:length(featuresSegments)
+
+                    % Estimate Minibatch Size
+                    T = size(featuresSegments{i}, 2);
+                    optimalMinibatchSize = estimateInferenceMinibatchSize(bytesAvailable, T);
+
+                    % Run model & move output back to CPU from GPU
+                    probs{i} = minibatchpredict(model.net, ...
+                        featuresSegments{i}, 'SequenceLength', 'shortest',...
+                        'MiniBatchSize', optimalMinibatchSize);
+
+                    % Move output back to CPU
+                    if isgpuarray(probs{i})
+                        probs{i} = gather(probs{i});
+                    end
+                end
+                fprintf('\n')
+                execTime = toc;
+
+                if numel(probs) > 1 
+                    % Stitch together probability vectors for each segment
+                    results(fileIdx).probabilities = segmentStitcher(probs, ...
+                        splitIndices, model.preprocParams.hopLen);
+                else
+                    results(fileIdx).probabilities = probs{1};
+                end
+
+            case 'framed'
+                % Spectrograms are computed then split into equal-sized
+                % frames, each one standardized and
+                % Run Preprocessing & Feature Extraction on audio
+
+                % Normalize the audio
+                audioIn = audioIn ./ max(abs(audioIn));
+
+                % Run preprocessor
+                fprintf('\tPreprocesing audio & extracting features...\n')
+                features = gavdNetPreprocess(...
+                    audioIn, ...
+                    results(fileIdx).fileFs, ...
+                    model.preprocParams.fsTarget, ...
+                    model.preprocParams.bandwidth, ...
+                    model.preprocParams.windowLen,...
+                    model.preprocParams.hopLen, ...
+                    model.preprocParams.saturationRange);
+
+                % Buffer 'features' into frames & standardize
+                featuresBuffered = featureBuffer(features, ....
+                    model.featureFraming.frameLength,...
+                    model.featureFraming.frameOverlapPercent);
+
+                % Run each frame through the model
+                probs = cell(size(featuresBuffered));
+                fprintf('\tRunning frames through model.')
+                tic
+                parfor i = 1:length(featuresBuffered)
+
+                    % Run model
+                    probs{i} = predict(model.net, featuresBuffered{i});
+
+                    % Move output back to the CPU
+                    if isgpuarray(probs{i})
+                        probs{i} = gather(probs{i});
+                    end
+
+                    % Do some dots so the user knows we haven't hung
+                    if mod(i, 10) == 0
+                        fprintf('.')
+                    end
+                end
+                fprintf('\n')
+                execTime = toc;
+
+                % Stitch together probability vectors for each frame and take the
+                % average of overlapping elements
+                numSpectrogramTimeBins = size(features, 2);
+                results(fileIdx).probabilities = concatenateOverlappingProbs(probs, ...
+                    numSpectrogramTimeBins, model.featureFraming.frameHopLength);
         end
-        execTime = toc;
 
         % Report execution time and seconds of audio with high probability
+        stftTimeBinDuration = model.preprocParams.hopLen/model.preprocParams.fsTarget;
         numTimeBinsProbHigh = sum(results(fileIdx).probabilities > 0.5);
-        secondsBinsProbHigh = numTimeBinsProbHigh * windowDur;
+        secondsBinsProbHigh = numTimeBinsProbHigh * stftTimeBinDuration;
         fprintf('\tInference Completed in %.2f seconds\n', execTime)
         fprintf('\tTotal audio duration: %.2f seconds\n', results(fileIdx).fileDuration)
         fprintf('\tDuration with raw detection probability > 50%%: %.2f seconds.\n\n', secondsBinsProbHigh)
-    
+
         % Increment the file index for the next iteration
         fileIdx = fileIdx + 1;
     end
@@ -209,18 +329,18 @@ fprintf('Postprocesing model outputs...\n')
 for i = 1:length(results)
 
     % Get audio for this file:
-    [audioIn, ~] = audioread(fullfile(inferenceAudioPath, results(i).fileName));
+    [audioIn, fileFs] = audioread(fullfile(inferenceAudioPath, results(i).fileName));
 
-    % Run postprocessing to determine decision boundaries. 
+    % Run postprocessing to determine decision boundaries.
     [results(i).eventSampleBoundaries, ~, ...
         results(i).confidence] = gavdNetPostprocess(...
-        audioIn, results(i).fileFs, results(i).probabilities, model.preprocParams, ...
+        audioIn, fileFs, results(i).probabilities, model.preprocParams, ...
         postProcOptions);
 
     % Get number of detections
     results(i).nDetections = size(results(i).eventSampleBoundaries, 1);
 
-    % Get the datetime start and end times for each detected event using 
+    % Get the datetime start and end times for each detected event using
     if ~isempty(results(i).eventSampleBoundaries)
         for detIdx = 1:results(i).nDetections
 
@@ -233,16 +353,16 @@ for i = 1:length(results)
             results(i).eventTimesDT(detIdx, 2) = results(i).sampleDomainTimeVector(eventEnd);
         end
     end
-     fprintf('File %g: %g events detected\n', i, results(i).nDetections)
+    fprintf('File %g: %g events detected\n', i, results(i).nDetections)
 end
 
 % Detections are one row per audio file, potentially multiple detections per row.
 % Flatten detections to one row per detection.
-results = flattenDetections(results);
+results = flattenDetections(results, model.preprocParams);
 
 %% Save the output
 saveNamePath = fullfile(inferenceOutputPath, 'detector_results_postprocessed.mat');
-save(saveNamePath, 'results', '-v7.3')
+save(saveNamePath, 'results', 'inferenceMode', '-v7.3')
 
 fprintf('Saved %g post processed detections to %s\n', length(results), inferenceOutputPath)
 diary off

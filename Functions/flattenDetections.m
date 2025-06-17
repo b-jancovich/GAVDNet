@@ -1,10 +1,13 @@
-function flatDetections = flattenDetections(detections)
+function flatDetections = flattenDetections(detections, preprocParams)
 % FLATTENDETECTIONS Converts hierarchical detections struct to flat format
 %   Takes a detections struct with one row per audio file (containing multiple
 %   detections) and returns a flattened struct with one row per detection.
 %
 % Inputs:
-%   detections - Original struct with one entry per file
+%   detections      - Original struct with one entry per file
+%   preprocParams   - Struct containing preprocessing parameters used for
+%                     inference & training. Packaged inside the model as 
+%                     'model.preprocParams'.
 %
 % Outputs:
 %   flatDetections - Flattened struct with one entry per detection
@@ -21,6 +24,11 @@ flatIdx = 1;
 % Initialize the flat detections struct
 flatDetections = struct();
 
+% Extract preproc parameters
+windowLen = preprocParams.windowLen;
+hopLen = preprocParams.hopLen;
+fsTarget = preprocParams.fsTarget;
+
 % Loop through each file in the original detections struct
 for fileIdx = 1:length(detections)
     % Get the current file entry
@@ -30,6 +38,20 @@ for fileIdx = 1:length(detections)
     if currFile.nDetections == 0 || ~isfield(currFile, 'eventSampleBoundaries') || isempty(currFile.eventSampleBoundaries)
         continue;
     end
+
+    % Get probabilities vector & measure
+    probsFeaturesDomain = currFile.probabilities;
+    nTimeBins = length(probsFeaturesDomain);
+    
+    % Time vector for features & probabilities
+    tFeatures = (0:nTimeBins-1) * hopLen/fsTarget + windowLen/(2*fsTarget);
+    
+    % Time vector for original audio samples
+    nAudioSamps = currFile.fileSamps;
+    tAudio = (0:nAudioSamps-1) / currFile.fileFs;
+    
+    % Interpolate probabilities to audio sample domain
+    probsSampleDomain = interp1(tFeatures, probsFeaturesDomain, tAudio, 'linear', 'extrap');
     
     % Loop through each detection in the current file
     for detIdx = 1:currFile.nDetections
@@ -43,6 +65,10 @@ for fileIdx = 1:length(detections)
         % Copy detection-specific information
         flatDetections(flatIdx).eventSampleStart = currFile.eventSampleBoundaries(detIdx, 1);
         flatDetections(flatIdx).eventSampleEnd = currFile.eventSampleBoundaries(detIdx, 2);
+
+        % Copy the region of probabilities pertaining to this detection
+        flatDetections(flatIdx).detProbsSampleDomain = probsSampleDomain(...
+            flatDetections(flatIdx).eventSampleStart : flatDetections(flatIdx).eventSampleEnd);
         
         % Calculate duration in seconds
         flatDetections(flatIdx).eventDuration = (flatDetections(flatIdx).eventSampleEnd - ...

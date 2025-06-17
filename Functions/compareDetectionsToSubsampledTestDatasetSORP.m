@@ -228,7 +228,7 @@ if ~isempty(uniqueFilenames)
     try
         % Get directory path from groundtruth file
         [gtDir, ~, ~] = fileparts(groundtruthPath);
-        firstAudioFile = fullfile(gtDir, uniqueFilenames{1});
+        firstAudioFile = fullfile(gtDir, 'wav', uniqueFilenames{1});
         
         % Try to read audio info
         if exist(firstAudioFile, 'file')

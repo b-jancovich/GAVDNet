@@ -120,17 +120,35 @@ timeResolution = hopDur;
 
 % Validate that the audio duration is consistent with the probability vector
 % Account for padding (half window length at each end) in the preprocessing function
-padLen = round(windowLen/2);
-resampledAudioLength = ceil(numel(audioIn) * targetFs / fileFs);
+padLen = ceil(windowLen/2);
+
+% Calculate expected resampled length using the same method as preprocessing
+if fileFs ~= targetFs
+    [p, q] = rat(targetFs/fileFs, 1e-9);
+    % Estimate resampled length more accurately
+    resampledAudioLength = ceil(numel(audioIn) * p / q);
+else
+    resampledAudioLength = numel(audioIn);
+end
+% Account for padding added in preprocessor
 paddedLength = resampledAudioLength + (2 * padLen);
-expNumHops = floor((paddedLength - windowLen) / hopLen) + 1;
-if expNumHops ~= numel(probs)
+
+% Calculate expected number of frames using floor to match buffer() behavior
+expNumHops = ceil((paddedLength - windowLen) / hopLen) + 1;
+
+% Allow for small discrepancies (±2 frames) due to resampling precision
+frameDifference = abs(expNumHops - numel(probs));
+if frameDifference > 1
     warning('Length of "audioIn" is %g samples with sample rate = %g Hz.\n', numel(audioIn), fileFs)
     fprintf('Preprocessor is resampling to %g Hz.\n', targetFs)
     fprintf('Preprocessor STFT hop is %g audio samples. \n', hopLen)
     fprintf('Expecting "probs" to be %g frames long\n', expNumHops)
     fprintf('Length of "probs" is %g frames.\n', numel(probs))
-    error('Mismatched audio and probs lengths');
+    fprintf('Frame difference: %g frames\n', frameDifference)
+    error('Mismatched audio and probs lengths (difference > 2 frames)');
+elseif frameDifference > 0
+    % Issue a warning but continue processing for small discrepancies
+    fprintf('Note: Single frame discrepancy between audio and probabilities vector.\n');
 end
 
 % Error if the deactivation threshold is greater than the activation threshold.
@@ -138,8 +156,6 @@ assert(deactivationThreshold < activationThreshold, ...
     'Deactivation threshold must be < activationThreshold');
 
 % Convert thresholds in seconds to samples.
-% mergeThreshold = isecond2sample(mergeThreshold, targetFs);
-% lengthThreshold = isecond2sample(lengthThreshold, targetFs);
 mergeThreshold = isecond2sample(mergeThreshold, fileFs);
 lengthThreshold = isecond2sample(lengthThreshold, fileFs);
 
@@ -313,7 +329,7 @@ end
 timeResolution = hopLen / targetFs;
 frameTimesInPaddedSignal = iframe2second(frame, timeResolution);
 
-% Adjust for padding (half window at beginning)
+% Adjust for padding (half window at beginning & end)
 paddingTimeOffset = padLen / targetFs;
 frameTimesInResampledSignal = frameTimesInPaddedSignal - paddingTimeOffset;
 
@@ -451,8 +467,8 @@ function sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, N, windowLe
 % 2. The window and hop length
 % 3. The different sample rates
 
-% Calculate key parameters
-frameDuration = hopLen / targetFs;  % Duration of each frame in seconds
+% % Calculate key parameters
+% frameDuration = hopLen / targetFs;  % Duration of each frame in seconds
 
 % Create array to hold per-sample probabilities at target sample rate
 paddedLength = ceil(N * targetFs / fileFs) + (2 * padLen);

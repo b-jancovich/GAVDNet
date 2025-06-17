@@ -165,16 +165,12 @@ fprintf('Results entries after time/score validation (evaluatedResultCount metri
 
 
 %% Extract detections from groundtruth
+
 if ~isfield(groundtruthData, 'testDatasetDetectionsList')
     error('Ground truth .mat file must contain a table named ''testDatasetDetectionsList''.');
 end
 gtTable = groundtruthData.testDatasetDetectionsList;
 gtSourceDescription = 'testDatasetDetectionsList';
-
-% Note: Filtering of gtTable based on 'failedFiles' from inference results is effectively removed
-% because 'failedFiles' would be empty if 'failComment' logic is removed.
-% If there was any other source for 'failedFiles', that logic would need review.
-% Assuming 'failedFiles' was solely derived from 'failComment'.
 
 if ismember('datenum', gtTable.Properties.VariableNames)
     gtTimes = gtTable.datenum;
