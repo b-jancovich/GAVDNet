@@ -26,8 +26,8 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -60,10 +60,14 @@ else
 end
 
 % Set the length threshold parameter for the post-processing.
-% Use the shortest call in the training set, multiplied by the scaling
+% Use the mean training call length, multiplied by the scaling
 % factor set in config:
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
+postProcOptions.LT = model.dataSynthesisParams.meanTargetCallDuration .* ...
     postProcOptions.LT_scaler;
+
+% Set maximum expected call duration from the longest signal in the
+% training dataset, with a +20% tolerance.
+postProcOptions.maxTargetCallDuration = model.dataSynthesisParams.maxTargetCallDuration * 1.2;
 
 %% Set up for GPU or CPU processing
 
@@ -86,10 +90,6 @@ end
 % Set output file name for raw results (probabilities)
 saveNamePathRaw = fullfile(inferenceOutputPath, 'detector_raw_results.mat');
 
-% Set output file name for post-processed results (detection boundaries and
-% confidence scores)
-saveNamePathFinal = fullfile(inferenceOutputPath, 'detector_raw_results.mat');
-
 %% Run Model
 
 % If raw results have been saved, load raw results, if not, run inference now:
@@ -104,8 +104,8 @@ if ~exist(saveNamePathRaw, 'file')
         
         % Clear GPU memory from previous iteration
         if useGPU
-            wait(gpuDevice(gpuDeviceID)); % Wait for operations on the selected GPU
-            reset(gpuDevice(gpuDeviceID)); % Reset the selected GPU
+            wait(gpuDevice(gpuDeviceID));
+            reset(gpuDevice(gpuDeviceID));
         end
     
         % Read audio file
@@ -125,7 +125,8 @@ if ~exist(saveNamePathRaw, 'file')
         results(fileIdx).fileFs = fileInfo.SampleRate;
         results(fileIdx).fileSamps = length(audioIn);
         results(fileIdx).fileDuration = results(fileIdx).fileSamps / results(fileIdx).fileFs;
-    
+        results(fileIdx).probabilities = [];
+
         % Extract datetime from filename
         fprintf('\tExtracting datetime stamp from audio filename...\n')
         results(fileIdx).fileStartDateTime = extractDatetimeFromFilename(fileInfo.FileName, 'datetime');
@@ -154,32 +155,11 @@ if ~exist(saveNamePathRaw, 'file')
             results(fileIdx).fileSamps, ...
             results(fileIdx).fileFs);
     
-        % Run Preprocessing & Feature Extraction on audio
-        fprintf('\tPreprocesing audio & extracting features...\n')
-        [features, ~] = gavdNetPreprocess(...
-            audioIn, ...
-            results(fileIdx).fileFs, ...
-            model.preprocParams.fsTarget, ...
-            model.preprocParams.bandwidth, ...
-            model.preprocParams.windowLen,...
-            model.preprocParams.hopLen);
-        
-        % Calculate maximum batch size for LSTM model with very conservative memory estimate
-        bytesPerSample = numel(features)/size(features,1) * 4 * 20;
-        batchSize = floor(bytesAvailable / bytesPerSample);
-        batchSize = 2^floor(log2(batchSize)); % round to power of 2
-
-        % Run Model in minibatch mode to save memory
-        fprintf('\tRunning model...\n')
-        tic
-        if useGPU == true
-            % Run model & Move output back to CPU from GPU
-            results(fileIdx).probabilities = gather(minibatchpredict(model.net, features), 'MiniBatchSize', batchSize);
-        else
-            % Run model
-            results(fileIdx).probabilities = minibatchpredict(model.net, features);
-        end
-        execTime = toc;
+        % Run Preprocessing and inference 
+        [results(fileIdx).probabilities, ~, execTime, ...
+            results(fileIdx).silenceMask, numAudioSegments] = gavdNetInference(...
+            audioIn, fileInfo.SampleRate, model, bytesAvailable, ...
+            featureFraming, minSilenceDuration);
 
         % Report execution time and seconds of audio with high probability
         numTimeBinsProbHigh = sum(results(fileIdx).probabilities > 0.5);
@@ -187,10 +167,23 @@ if ~exist(saveNamePathRaw, 'file')
         fprintf('\tInference Completed in %.2f seconds\n', execTime)
         fprintf('\tTotal audio duration: %.2f seconds\n', results(fileIdx).fileDuration)
         fprintf('\tDuration with raw detection probability > 50%%: %.2f seconds.\n\n', secondsBinsProbHigh)
-    
+        
+        % Write diagnostic information to the results struct
+        results(fileIdx).probsAllNan = all(isnan(results(fileIdx).probabilities));
+        results(fileIdx).probsAnyNan = any(isnan(results(fileIdx).probabilities));
+        results(fileIdx).audioAllSilence = all(results(fileIdx).silenceMask == true);
+        results(fileIdx).audioAnySilence = any(results(fileIdx).silenceMask == true);
+        results(fileIdx).numSplitAudioSegments = numAudioSegments;
+
         % Increment the file index for the next iteration
         fileIdx = fileIdx + 1;
     end
+
+    % Count how many files are all nan, contain any nan, or are all silent
+    numFilesAllNanProbs = sum([results.probsAllNan]);
+    numFilesAnyNanProbs = sum([results.probsAnyNan]);
+    numFilesAllSilence = sum([results.audioAllSilence]);
+    numFilesAnySilence = sum([results.audioAnySilence]);
 
     % Save the output
     save(saveNamePathRaw, 'results', '-v7.3')
@@ -209,12 +202,12 @@ fprintf('Postprocesing model outputs...\n')
 for i = 1:length(results)
 
     % Get audio for this file:
-    [audioIn, ~] = audioread(fullfile(inferenceAudioPath, results(i).fileName));
+    [audioIn, fileFs] = audioread(fullfile(inferenceAudioPath, results(i).fileName));
 
     % Run postprocessing to determine decision boundaries. 
     [results(i).eventSampleBoundaries, ~, ...
         results(i).confidence] = gavdNetPostprocess(...
-        audioIn, results(i).fileFs, results(i).probabilities, model.preprocParams, ...
+        audioIn, fileFs, results(i).probabilities, model.preprocParams, ...
         postProcOptions);
 
     % Get number of detections
@@ -242,7 +235,7 @@ results = flattenDetections(results);
 
 %% Save the output
 saveNamePath = fullfile(inferenceOutputPath, 'detector_results_postprocessed.mat');
-save(saveNamePath, 'results', '-v7.3')
+save(saveNamePath, 'results', 'featureFraming', 'postProcOptions', '-v7.3')
 
 fprintf('Saved %g post processed detections to %s\n', length(results), inferenceOutputPath)
 diary off

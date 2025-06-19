@@ -3,7 +3,7 @@ close all
 clc
 
 % Path to disagreements file
-disagreementsPath = "D:\GAVDNet\Chagos_DGS\Test Results\detector_vs_GT_disagreements_16-Jun-2025_12-40-16.mat";
+disagreementsPath = "D:\GAVDNet\Chagos_DGS\Test Results\detector_vs_GT_disagreements_17-Jun-2025_07-47-32.mat";
 
 % Path to test audio
 audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small";

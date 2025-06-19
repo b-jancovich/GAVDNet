@@ -4,14 +4,19 @@
 % This script creates a balanced, representative test dataset for evaluating 
 % an automated animal call detector by stratified subsampling from a 
 % larger dataset. This larger dataset is itself a single year of data from a 
-% decade-scale study of the Chagos pygmy blue whale long [1]. The dataset 
-% takes the form of MATLAB files containing a human-validated list of whale
-% songs with timestamps and metadata, isolated from audio recordings 
-% caputured by the Comprehensive Nuclear Test Ban Treaty Organisation as 
-% part of their International Monitoring System. The dataset is open access.
+% decade-scale study of the Chagos pygmy blue whale song [1]. The dataset 
+% takes the form of MATLAB files containing a list of whale song detections
+% with timestamps and metadata, isolated from audio recordings 
+% captured by the Comprehensive Nuclear Test Ban Treaty Organisation's
+% International Monitoring System. The dataset is open access.
 % Access to the hydroacoustic data from the CTBTO hydrophone station HA08 
 % operated by USA at Chagos Archipelago was made available to the authors 
 % by the CTBTO's Virtual Data Exploitation Centre under contract.
+%
+% The original detections in [1] were made using a Sparse Representation 
+% Detector, as described in [2]. False positives were removed manually by 
+% the authors of [1]. The detector in [2] returns estimates of SNR and 
+% SINR for each detection, and these are used in the subsampling process.
 % 
 % Subsampling process:
 %
@@ -27,7 +32,7 @@
 % 2. FILTERS THE DATASET:
 %    - Removes detections whose audio files cannot be read, or do not
 %      contain valid audio data.
-%    - Filters out files with duration shorter than 20% of mean duration
+%    - Filters out files with duration shorter than 20% of mean file duration
 %    - Identifies files with and without detections
 %
 % 3. CREATES STRATIFIED BINS based on multiple dimensions:
@@ -40,11 +45,13 @@
 %    - Samples proportionally from each bin to maintain dataset distribution
 %    - Prioritizes bins with higher representation in the original dataset
 %    - Samples until target duration for files with detections is reached
-%    - Adds some audio files without detections based on propNoDetections parameter
+%    - Adds some audio files without detections based on propNoDetections 
+%      input argument.
 %
 % 5. CREATES TEST DATASET:
-%    - Builds detection-level and file-level tables
-%    - Saves tables with all metadata preserved
+%    - Builds detection-level and file-level tables containing detection
+%      list and metadata
+%    - Saves tables to the output directory
 %    - Copies audio files to the output directory
 %
 % PARAMETERS:
@@ -66,6 +73,10 @@
 %       in the Indian Ocean: Whale Song Identifies a Possible New Population.” 
 %       Scientific Reports 11, no. 1 (December 2021): 8762. 
 %       https://doi.org/10.1038/s41598-021-88062-5.
+%   [2] Socheleau, F.-X., & Samaran, F. (2017). Detection of Mysticete Calls: 
+%       A Sparse Representation-Based Approach (Research Report RR-2017-04-SC). 
+%       Dépt. Signal et Communications (Institut Mines-Télécom-IMT Atlantique-UBL);
+%       https://hal.archives-ouvertes.fr/hal-01736178
 %
 % Ben Jancovich, 2024
 % Centre for Marine Science and Innovation
@@ -81,16 +92,16 @@ clc
 %% Inputs
 
 % Audio directory
-audioPath = "D:\Diego Garcia South\DiegoGarcia2015\wav";
+audioPath = "D:\Diego Garcia South\DiegoGarcia2007\wav";
 
 % Detections directory
-detectionsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\Manue_Chagos_RawData\DGS\detections_H08S1_DiegoGarciaS_2015.mat";
+detectionsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\Manue_Chagos_RawData\DGS\detections_H08S1_DiegoGarciaS_2007.mat";
 
 % Directory to save the test dataset
-outputDir = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing";
+outputDir = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small";
 
 % Test dataset target duration (hours)
-targetDuration = 500; 
+targetDuration = 50; 
 
 % Proportion of dataset audio files with no detections (e.g., 10%)
 propNoDetections = 0.1;

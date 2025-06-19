@@ -6,27 +6,35 @@ clear all
 close all
 clc
 
-%% Run test
+%% Settings
 
-% Add paths
-addpath('C:\Users\z5439673\Git\GAVDNet\Functions');
+featureFraming = 'event-split'; % 'simple' or 'event-split' or 'none'; 
 
-% Load model
-% modelPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\chagos_DGS_2025\GAVDNet_trained_27-May-2025_18-06.mat";
-modelPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\GAVDNet_trained_28-May-2025_23-29.mat";
+%% File paths
 
-% config Path
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% Model File Path
+modelPath = "D:\GAVDNet\Chagos_DGS\Training & Models\GAVDNet_trained_17-Jun-2025_23-50.mat";
 
-% Audio Path - File 1: target call
+% Config file Path
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+
+% Test Audio File Path - File 1: target call
+% audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_071102-000000_EarthquakeDynamicRangeTest.wav"; 
+% audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_071102-160000_HighDynamicRangeCalls.wav";
+audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_150605-120000_calls+extremelyHighPowerNoise.wav";
+% audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_150605-120000_calls+extremelyHighPowerNoise_TrimmedTo2.08.20.wav";     % 63 calls manually detected 
+% audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_071102-200000_TypicalLotsOfCalls_TrimmedTo2.08.39.wav";                % 199 calls manually detected
 % audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
-audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\BmAnt_ZCall_Casey_2014-03-30_04-00-00.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\BmAnt_ZCall_Casey_2014-03-30_04-00-00.wav";
 
 % Audio Path - File 2: non-target call
 % audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\NewZealand_BW_L7910NZ01_002K_Site04_multi_20160225_051500Z_15min.wav";
 
-% Load Config, Model & audio
+%% Load Config, Model & audio
+
+% Add paths
+addpath('C:\Users\z5439673\Git\GAVDNet\Functions');
 load(modelPath)
 run(configPath)
 [audio, fs] = audioread(audioPath);
@@ -37,23 +45,18 @@ run(configPath)
 % your target call are frequently missing due to propagation effects.
 postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration * postProcOptions.LT_scaler;
 
-% Run Preprocessing & Feature Extraction on audio
-fprintf('Preprocesing audio & extracting features...\n')
-[features, ~] = gavdNetPreprocess(...
-    audio, ...
-    fs, ...
-    model.preprocParams.fsTarget, ...
-    model.preprocParams.bandwidth, ...
-    model.preprocParams.windowLen,...
-    model.preprocParams.hopLen);
+[useGPU, deviceID, ~, bytesAvailable] = gpuConfig();
 
-% Run Model in minibatch mode to save memory
-fprintf('Running model...\n')
-y = minibatchpredict(model.net, gpuArray(features));
+%% Run Model
 
-% Run postprocessing to determine decision boundaries. 
+% Run Preprocessing and inference 
+[probabilities, features, execTime] = gavdNetInference(audio, fs, model, ...
+    bytesAvailable, featureFraming);
+
+%% Run postprocessing to determine decision boundaries. 
+
 fprintf('Postprocesing model outputs...\n')
-gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions, features);
+gavdNetPostprocess(audio, fs, probabilities, model.preprocParams, postProcOptions, features);
  
 % Get regions of interest
-roi = gavdNetPostprocess(audio, fs, y, model.preprocParams, postProcOptions);
+roi = gavdNetPostprocess(audio, fs, probabilities, model.preprocParams, postProcOptions);

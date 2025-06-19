@@ -74,8 +74,10 @@ Wp = bandwidth / nyq; % Passband Edges (normalized freqs)
 
 % Loop through each sequence
 for seqIdx = 1:numSequences
-    fprintf('Generating sequence %d of %d\n', seqIdx, numSequences);
-
+    if seqIdx == 1 || mod(seqIdx, 100) == 0
+        fprintf('Generating sequence %d of %d\n', seqIdx, numSequences);
+    end
+    
     % Read noise segment for the entire sequence
     noise = getNoise(ads_noise, sequenceDuration, fs);
     

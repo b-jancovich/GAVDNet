@@ -10,25 +10,33 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Path to inference output file:
-% inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\detector_results_postprocessed.mat";
-inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\detector_results_postprocessed.mat";
+inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\detector_results_postprocessed.mat";
+% inferenceResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\detector_results_postprocessed.mat";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
+groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small\test_dataset_detection_list.mat";
+% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\2007subset\test_dataset_detection_list.mat";
 % groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\TestSubset\test_dataset_detection_list.mat";
 % groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset\Casey2014.Bm.Ant-Z.selections_SUBSET.txt";
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
+% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 
 % Results path for comparison of detector output with groundtruth
-% gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\Results\groundtruthComparisonResults.xlsx";
-gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\groundtruthComparisonResults.xlsx";
+gtCompareResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\groundtruthComparisonResults.xlsx";
+% gtCompareResultsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\Results\groundtruthComparisonResults.xlsx";
 
 % Test dataset source
-dataset = 'SORP'; % Either "CTBTO" or "SORP"
+gtFormat = 'CTBTO'; % Either "CTBTO" or "SORP"
+
+% True known call duration (for isolating audio for missed detections)
+maxDetectionDuration = 40; % (seconds)
+% NOT the max duration of the calls in the training data, as these may not
+% contain the entire song, but the maximum duration of the real song, as
+% observed in real recordings.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
@@ -47,38 +55,46 @@ modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
 if isscalar(modelList)
     load(fullfile(modelList.folder, modelList.name))
     fprintf('Loading model: %s\n', modelList.name)
+    [~, modelName, ~] = fileparts(fullfile(modelList.folder, modelList.name));
+
 else
     [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
     load(fullfile(location, file))
+    [~, modelName, ~] = fileparts(fullfile(location, file));
 end
 
-% Get LT & LT scaler post proc parameters
-maxDetectionDuration = model.dataSynthesisParams.maxTargetCallDuration;
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
-    postProcOptions.LT_scaler;
+% Re-load the postprocessor parameters used at inference:
+load(inferenceResultsPath, "postProcOptions")
+
+% Reload the feature framing mode used at inference:
+load(inferenceResultsPath, "featureFraming");
 
 %% Compare Detector Output to Groundtruth
 
 % Run groundtruth comparison
-switch dataset 
-    case 'CTBTO'
-        [metrics, FP, FN] = compareDetectionsToSubsampledTestDatasetCTBTO(groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration);
-    case 'SORP'
-        [metrics, FP, FN] = compareDetectionsToSubsampledTestDatasetSORP(groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration);
-end
+[metrics, FP, FN] = compareDetectionsToSubsampledTestDataset(...
+    groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration, gtFormat);
 
 %% Save Results
 
 % Compile results and test params
 testCompleteTime = string(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
+[~, dataSetName, ~] = fileparts(fileparts(groundtruthPath));
+
 outTable = struct2table(metrics);
-outTable = removevars(outTable, {'roc', 'performanceCurve'});
+outTable = removevars(outTable, {'roc', 'performanceCurve', ...
+    'evaluatedResultCount', 'numResultsExcluded_NoScoreOrTime',...
+    'groundtruthSource', 'numResultsExcluded_InferenceFailures',...
+    'matchingAlgorithm', 'totalAudioDuration_sec'});
 newNames = {'ActivationThreshold', 'DeactivationThreshold', 'AEAVD', ...
     'MergeThreshold', 'LengthThresholdScaler', 'LengthThreshold', ...
-    'TestTimeStamp'};
+    'TestTimeStamp', 'TestDataset', 'ModelName', 'SequenceSNRRange',...
+    'FeatureFramingMode'};
 outTable = addvars(outTable, postProcOptions.AT, postProcOptions.DT, ...
     postProcOptions.AEAVD, postProcOptions.MT, postProcOptions.LT_scaler, ...
-    postProcOptions.LT, testCompleteTime, 'NewVariableNames', newNames);
+    postProcOptions.LT, testCompleteTime, string(modelName), dataSetName,...
+    model.dataSynthesisParams.snrRange,...
+    string(featureFraming), 'NewVariableNames', newNames);
 
 % Write output to CSV
 if exist(gtCompareResultsPath, 'file') == 2
@@ -95,5 +111,3 @@ disagreements = struct('falsePositives', FP, 'falseNegatives', FN);
 saveNamePath = fullfile(resultsFolder,...
     strcat('detector_vs_GT_disagreements_', testCompleteTime, '.mat'));
 save(saveNamePath, 'disagreements', '-v7.3')
-
-

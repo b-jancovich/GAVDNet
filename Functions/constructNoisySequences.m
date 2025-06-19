@@ -72,7 +72,7 @@ for seqIdx = 1:numSequences
     % Normalize to avoid clipping
     maxAmp = max(abs(audioSequence));
     if maxAmp > 0
-        audioSequence = audioSequence / maxAmp * 0.9; % Leaving some headroom
+        audioSequence = audioSequence / maxAmp;
     end
     
     % Save the sequence and mask

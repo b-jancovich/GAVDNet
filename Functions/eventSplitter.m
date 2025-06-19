@@ -1,5 +1,47 @@
 function [audioSegments, splitIndices, changePtsIndices] = eventSplitter(audio, fs, smoothWindowDuration, overlapDuration)
-
+%EVENTSPLITTER Automatically segments audio at detected extreme events
+%
+%   [audioSegments, splitIndices, changePtsIndices] = eventSplitter(audio, fs, smoothWindowDuration, overlapDuration)
+%
+%   Detects extreme events in audio signals by analyzing RMS envelopes at
+%   multiple time scales, then segments the audio at detected change points
+%   with configurable overlap between segments.
+%
+%   INPUTS:
+%       audio                 - Input audio signal (vector)
+%       fs                    - Sample rate in Hz
+%       smoothWindowDuration  - Duration for envelope smoothing in seconds
+%       overlapDuration       - Overlap duration between segments in seconds
+%
+%   OUTPUTS:
+%       audioSegments         - Cell array containing segmented audio data
+%       splitIndices          - N×2 matrix of [start, end] indices for each segment
+%       changePtsIndices      - Indices where change points were detected
+%
+%   The function uses dual-scale RMS envelope analysis (1s and 60s windows)
+%   to detect extreme events, then applies change point detection using
+%   mean-based thresholding. Audio is segmented at change points with
+%   configurable overlap between adjacent segments.
+%
+%   ALGORITHM:
+%   1. Preprocesses audio (DC removal, 5Hz high-pass filtering, normalization)
+%   2. Computes short-term (1s) and long-term (60s) RMS envelopes
+%   3. Detects extreme events in both envelopes using detectExtremeEvents()
+%   4. Selects appropriate envelope based on detection results
+%   5. Applies smoothing and change point detection
+%   6. Segments audio with specified overlap
+%
+%   NOTES:
+%   - Uses 8th-order elliptic high-pass filter with 5Hz cutoff
+%   - Change point detection uses ischange() with mean threshold of 10
+%   - GPU arrays are automatically converted to CPU arrays for processing
+%   - If no extreme events detected, returns original audio as single segment
+%
+% Ben Jancovich, 2025
+% Centre for Marine Science and Innovation  
+% School of Biological, Earth and Environmental Sciences
+% University of New South Wales, Sydney, Australia
+%
 % Remove DC Offset
 audioMeasure = audio - mean(audio);
 

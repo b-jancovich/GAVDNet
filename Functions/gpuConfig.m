@@ -38,7 +38,7 @@ if numGPUs > 0
         gpuInfo = gpuDevice(i);
         % Get available memory in bytes and convert to GB for display
         availableMemory = gpuInfo.AvailableMemory;
-        availableMemoryGB = availableMemory / (1024^3);
+        availableMemoryGB = availableMemory / 1e9;
         fprintf('GPU %d: %s - Available Memory: %.2f GB\n', ...
             i, gpuInfo.Name, availableMemoryGB);
         % Check if this GPU has more available memory

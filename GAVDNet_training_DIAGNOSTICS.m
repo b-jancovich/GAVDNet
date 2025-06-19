@@ -1,10 +1,25 @@
 clear all
-close all
 clc
 
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
-sequence_Path = 'C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\sequences';
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% sequence_Path = 'C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\sequences';
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+sequence_Path = "D:\GAVDNet\Chagos_DGS\Training & Models\sequences";
 sequenceFs = 250 ; 
+
+X_T_Path = "D:\GAVDNet\Chagos_DGS\Training & Models\trainXandT";
+% X_T_Path = 'C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\trainXandT';
+
+% Path to some real recordings to compare with:spectPCENized
+audioPath = "D:\GAVDNet\Chagos_DGS\Test Data\H08S1_150605-120000_calls+extremelyHighPowerNoise.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\H08S1_071102-000000_EarthquakeDynamicRangeTest.wav"; 
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\H08S1_071102-160000_HighDynamicRangeCalls.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\Chagos_DGS\H08S1_071102-200000_TypicalLotsOfCalls_TrimmedTo2.08.39.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\Chagos_whale_song_DGS_071102.wav";
+% audioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Animal Recordings\Whale Calls\BmAnt_ZCall_Casey_2014-03-30_04-00-00.wav";
+
+% Clean signals path
+cleanSigPath = "D:\GAVDNet\Chagos_DGS\Training & Models\clean_signals";
 
 run(configPath) % Load config file
 projectRoot = pwd;
@@ -12,23 +27,28 @@ projectRoot = pwd;
 addpath(fullfile(projectRoot, "Functions"))
 addpath(fullfile(gitRoot, "Utilities"))
 
-% Handle multiple model files with a UI dialog:
-modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
-if isscalar(modelList)
-    load(fullfile(modelList.folder, modelList.name))
-    fprintf('Loading model: %s\n', modelList.name)
-else
-    [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
-    load(fullfile(location, file))
-end
+% Init STFT parameters (ensuring even values)
+windowLen = 2 * round((windowDur * fsTarget) / 2);
+hopLen = 2 * round((hopDur * fsTarget) / 2);
 
-% Get LT & LT scaler post proc parameters
-maxDetectionDuration = model.dataSynthesisParams.maxTargetCallDuration;
-postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
-    postProcOptions.LT_scaler;
+%% Load and analyse model
 
-% %% Draw model training history
+% % Handle multiple model files with a UI dialog:
+% modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
+% if isscalar(modelList)
+%     load(fullfile(modelList.folder, modelList.name))
+%     fprintf('Loading model: %s\n', modelList.name)
+% else
+%     [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
+%     load(fullfile(location, file))
+% end
 % 
+% % Get LT & LT scaler post proc parameters
+% maxDetectionDuration = model.dataSynthesisParams.maxTargetCallDuration;
+% postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
+%     postProcOptions.LT_scaler;
+
+% % Draw model training history
 % figure(1)
 % plot(model.trainInfo.TrainingHistory.Iteration, model.trainInfo.TrainingHistory.Loss)
 % yscale('log')
@@ -37,49 +57,121 @@ postProcOptions.LT = model.dataSynthesisParams.minTargetCallDuration .* ...
 % ylabel('Binary Cross Entropy')
 % xlabel('Iteration')
 
+%% Show a real recording for comparison
+
+% % Read audio
+% [realAudio, realAudioFs] = audioread(audioPath);
+% 
+% % Build time vector for audio
+% realAudioDuration = length(realAudio) / realAudioFs;
+% dtRealAudioFs = 1/realAudioFs;
+% realAudioTimeVec = 0:dtRealAudioFs:realAudioDuration-dtRealAudioFs;
+% 
+% % Preprocess data
+% meanTargetCallDuration = 15;
+% realAudioFeatures = gavdNetPreprocess(realAudio, realAudioFs, fsTarget, ...
+%     bandwidth, windowLen, hopLen);
+% 
+% % Build time vector for features
+% featuresTimeVec = linspace(0, realAudioDuration, size(realAudioFeatures, 2));
+% fvec = linspace(bandwidth(1), bandwidth(2), 40);
+% 
+% % Draw plot
+% figure(2)
+% imagesc(featuresTimeVec, fvec, realAudioFeatures)
+% xlabel('Time (seconds)')
+% ylabel('Frequency (Hz)')
+% set(gca, 'YDir', 'normal')
+% colorbar
+% title('Real recording spectrogram')
+
+%% Draw some clean signals
+
+% cleanSigList= dir(fullfile(cleanSigPath, '*.wav'));
+% FFTLen = 4096;
+% [filterBank, Fc, ~] = designAuditoryFilterBank(fsTarget, ...
+%     FFTLength = FFTLen, ...
+%     Normalization = "none", ...
+%     OneSided = true, ...
+%     FrequencyRange = bandwidth, ...
+%     FilterBankDesignDomain = "warped", ...
+%     FrequencyScale = "mel", ...
+%     NumBands = 40);
+% 
+% % Apply filter bank
+% dynRange = 30;
+% for i = 1:100
+%     [audio, fs] = audioread(fullfile(cleanSigList(i).folder, cleanSigList(i).name));
+%     audio = audio ./ max(abs(audio));
+%     [p, q] = rat(fsTarget/fs, 1e-9);
+%     audio = resample(audio(:), p, q);
+%     duration = length(audio) / fsTarget;
+%     dt = 1/fsTarget;
+%     audioT = 0:dt:duration-dt;
+% 
+%     nOverlap = windowLen - hopLen;
+%     [s, f, t] = spectrogram(audio, windowLen, nOverlap, FFTLen, fsTarget, 'yaxis');
+%     s = abs(s).^2;
+%     s = filterBank * s;
+%     s = 10*log10(max(s, 1e-10));
+%     cMax = max(s, [], 'all');
+%     cMin = cMax-dynRange;
+% 
+%     figure(3)
+%     tiledlayout(2,1)
+% 
+%     nexttile
+%     plot(audioT, audio)
+%     ylabel('Amplitude')
+%     xlabel('Time (s)')
+%     xlim([0, 20])
+% 
+%     nexttile
+%     imagesc(t, Fc, s)
+%     set(gca, 'YDir', 'normal')
+%     ylabel('Frequency (Hz)')
+%     xlabel('Bin Center Time Index (s)')
+%     xlim([0, 20])
+%     colorbar
+%     clim([cMin, cMax])
+%     waitforbuttonpress
+% end
+
 %% Draw Sequences
 
 sequence_FileList = dir(fullfile(sequence_Path, '*mat'));
-
-figure(2)
+targetCallDuration = 15;
 interactive_plot_viewer(sequence_FileList, sequenceFs, fsTarget, bandwidth, windowDur, hopDur)
 
-% %% Draw 'X' (Frames) & 'T' (Targets)
-% X_T_Path = 'C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Training\BmAntZ_SORP\trainXandT';
-% X_T_FileList = dir(fullfile(X_T_Path, '*mat'));
+%% Draw 'X' (Frames) & 'T' (Targets)
+
+% X_T_FileList = dir(fullfile(X_T_Path, '*.mat'));
 % 
-% for i = 1:100
+% for i = 1:200
 %     figure(3)
-%     tiledlayout(1,5)
-%     kk = 0;
-%     for j = 1:5
-%         load(fullfile(X_T_FileList(i+kk).folder, X_T_FileList(i+kk).name));
+%     load(fullfile(X_T_FileList(i).folder, X_T_FileList(i).name));
+%     numWin = size(X, 2);
+%     timeVector = (windowDur/2) + hopDur * (0:numWin-1);
+%     freqVector = logspace2(bandwidth(1), bandwidth(2), 40);
 % 
-%         numWin = size(X, 2);
-%         timeVector = (windowDur/2) + hopDur * (0:numWin-1);
-%         freqVector = logspace2(bandwidth(1), bandwidth(2), 40);
-% 
-%         nexttile
-%         yyaxis left
-%         imagesc(timeVector, freqVector, X)
-%         set(gca, 'YDir', 'normal')
-%         ylabel('Frequency (Hz)')
-%         xlabel('Bin Center Time Index (s)')
-%         yyaxis right
-%         plot(timeVector, T, 'r--')
-%         ylabel('Probability of Song')
-%         ylim([-0.01, 1.01])
-% 
-%         kk = kk+1;
-%     end
+%     yyaxis left
+%     imagesc(timeVector, freqVector, X)
+%     set(gca, 'YDir', 'normal')
+%     ylabel('Frequency (Hz)')
+%     xlabel('Bin Center Time Index (s)')
+%     yyaxis right
+%     plot(timeVector, T, 'r--')
+%     ylabel('Probability of Song')
+%     ylim([-0.01, 1.01])
 %     waitforbuttonpress
 % end
 
 
 %% Helper function
+
 function interactive_plot_viewer(sequence_FileList, sequenceFs, fsTarget, bandwidth, windowDur, hopDur)
     % Create figure
-    figure(2);
+    figure(3);
     clf; % Clear the figure
     
     % Initialize variables
@@ -116,12 +208,14 @@ function interactive_plot_viewer(sequence_FileList, sequenceFs, fsTarget, bandwi
         loaded = load(fullfile(sequence_FileList(currentIndex).folder, sequence_FileList(currentIndex).name));
         audioSequence = loaded.audioSequence;
         mask = loaded.mask;
+        snr = loaded.sequenceSNRs;
 
         windowLen = round(windowDur * fsTarget);
         hopLen = round(hopDur * fsTarget);
 
         % Process data
-        [Xfull, Tfull] = gavdNetPreprocess(audioSequence, sequenceFs, fsTarget, bandwidth, windowLen, hopLen, mask);
+        [Xfull, Tfull] = gavdNetPreprocess(audioSequence, sequenceFs, fsTarget, ...
+            bandwidth, windowLen, hopLen, mask);
         numWin = size(Xfull, 2);
         timeVector = (windowDur/2) + hopDur * (0:numWin-1);
         freqVector = logspace2(bandwidth(1), bandwidth(2), 40);
@@ -135,6 +229,7 @@ function interactive_plot_viewer(sequence_FileList, sequenceFs, fsTarget, bandwi
         set(gca, 'YDir', 'normal')
         ylabel('Frequency (Hz)')
         xlabel('Bin Center Time Index (s)')
+        colorbar
         
         % Plot probability
         yyaxis right
@@ -143,8 +238,9 @@ function interactive_plot_viewer(sequence_FileList, sequenceFs, fsTarget, bandwi
         ylim([-0.01, 1.01])
         
         % Update title and file info
-        title(sprintf('File %d/%d: %s', currentIndex, maxIndex, sequence_FileList(currentIndex).name), ...
+        title(sprintf('File %d/%d: %s - SNR = %.2f', currentIndex, maxIndex, sequence_FileList(currentIndex).name, snr), ...
               'Interpreter', 'none')
+
         set(fileInfoText, 'String', sprintf('Current file: %s', sequence_FileList(currentIndex).name));
         
         % Refresh the plot

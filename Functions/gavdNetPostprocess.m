@@ -107,6 +107,7 @@ deactivationThreshold = postprocParams.DT;
 AEAVD = postprocParams.AEAVD;
 mergeThreshold = postprocParams.MT;
 lengthThreshold = postprocParams.LT;
+maxTargetCallDuration = postprocParams.maxTargetCallDuration;
 
 % Unpack preprocessor parameters (used in both training & inference)
 targetFs = preprocParams.fsTarget; % The new rate for the audio, resampled before stft (Hz)
@@ -118,19 +119,36 @@ bandwidth = preprocParams.bandwidth; % Bandwidth of the mel spectrogram.
 % Time resolution of the spectrogram
 timeResolution = hopDur;
 
+% Calculate expected resampled length using the same method as preprocessing
+if fileFs ~= targetFs
+    [p, q] = rat(targetFs/fileFs, 1e-9);
+    % Estimate resampled length
+    resampledAudioLength = ceil(numel(audioIn) * p / q);
+else
+    resampledAudioLength = numel(audioIn);
+end
+
 % Validate that the audio duration is consistent with the probability vector
 % Account for padding (half window length at each end) in the preprocessing function
-padLen = round(windowLen/2);
-resampledAudioLength = ceil(numel(audioIn) * targetFs / fileFs);
+padLen = ceil(windowLen/2);
+
+% Account for padding added in preprocessor
 paddedLength = resampledAudioLength + (2 * padLen);
-expNumHops = floor((paddedLength - windowLen) / hopLen) + 1;
-if expNumHops ~= numel(probs)
+
+% Calculate expected number of frames using the exact same method as buffer()
+% buffer(x, windowLen, windowLen-hopLen, "nodelay") produces:
+expNumHops = ceil((paddedLength - windowLen + hopLen) / hopLen);
+
+% Allow for small discrepancies (±2 frames) due to resampling precision
+frameDifference = abs(expNumHops - numel(probs));
+if frameDifference > 1
     warning('Length of "audioIn" is %g samples with sample rate = %g Hz.\n', numel(audioIn), fileFs)
     fprintf('Preprocessor is resampling to %g Hz.\n', targetFs)
     fprintf('Preprocessor STFT hop is %g audio samples. \n', hopLen)
     fprintf('Expecting "probs" to be %g frames long\n', expNumHops)
     fprintf('Length of "probs" is %g frames.\n', numel(probs))
-    error('Mismatched audio and probs lengths');
+    fprintf('Frame difference: %g frames\n', frameDifference)
+    error('Mismatched audio and probs lengths (difference > 2 frames)');
 end
 
 % Error if the deactivation threshold is greater than the activation threshold.
@@ -138,23 +156,21 @@ assert(deactivationThreshold < activationThreshold, ...
     'Deactivation threshold must be < activationThreshold');
 
 % Convert thresholds in seconds to samples.
-% mergeThreshold = isecond2sample(mergeThreshold, targetFs);
-% lengthThreshold = isecond2sample(lengthThreshold, targetFs);
-mergeThreshold = isecond2sample(mergeThreshold, fileFs);
-lengthThreshold = isecond2sample(lengthThreshold, fileFs);
+mergeThreshold = second2sample(mergeThreshold, fileFs);
+lengthThreshold = second2sample(lengthThreshold, fileFs);
 
 % Create mask by applying activation and deactivation thresholds
-avdmask = iapplyThreshold(probs(:), activationThreshold, deactivationThreshold);
+avdmask = applyThreshold(probs(:), activationThreshold, deactivationThreshold);
 
 % Convert frame-based mask to frame-based roi
 b1 = binmask2sigroi(avdmask);
 
-% Use corrected time-to-sample conversion that accounts for preprocessing padding
-boundaries = iframe2sample_corrected(b1, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
+% Use time-to-sample conversion that accounts for preprocessing padding
+boundaries = frame2sample(b1, fileFs, targetFs, numel(audioIn), hopLen, padLen);
 
 % Apply energy-based detection refinement if requested
 if AEAVD
-    boundaries = ienergyAVD(audioIn, fileFs, timeResolution, boundaries, numel(probs(:)), hopLen);
+    boundaries = energyAVD(audioIn, fileFs, timeResolution, boundaries, numel(probs(:)), hopLen);
     boundaries = min(boundaries, numel(audioIn));
 end
 
@@ -173,10 +189,15 @@ if ~isempty(boundaries)
 else
     b3 = b1;
 end
+
+% Split long events that may contain multiple calls
+if maxTargetCallDuration < inf && ~isempty(b3)
+    b3 = splitLongEvents(b3, audioIn, fileFs, targetFs, probs, maxTargetCallDuration, bandwidth, hopLen, padLen);
+end
 sampleroi = b3;
 
 % Convert probabilities to sample domain for confidence calculation
-sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
+sampleprob = frameprob2sampleprob(probs, fileFs, targetFs, numel(audioIn), hopLen, padLen);
 
 % Calculate confidence for each region (mean probability within the region)
 confidence = [];
@@ -192,7 +213,7 @@ end
 % Convenience plot if no output requested.
 switch nargout
     case 0
-        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
+        conveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
     case 1
         varargout{1} = sampleroi;
     case 2
@@ -206,12 +227,12 @@ switch nargout
         varargout{1} = sampleroi;
         varargout{2} = sampleprob;
         varargout{3} = confidence;
-        iconveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
+        conveniencePlot(audioIn, fileFs, targetFs, sampleroi, probs, windowLen, hopLen, bandwidth, features);
 end
 end
 
-function out = ienergyAVD(audioIn, fileFs, timeResolution, boundaries, numHops, hopLen)
-%ienergyAVD Apply energy-based detection to fine-tune boundaries
+function out = energyAVD(audioIn, fileFs, timeResolution, boundaries, numHops, hopLen)
+%energyAVD Apply energy-based detection to fine-tune boundaries
 
 % Compute analysis chunk length
 padLength = round(hopLen/2);
@@ -225,8 +246,8 @@ padLength = round(hopLen/2);
 newBoundaries = zeros(ceil(numHops/2), 2, like=boundaries);
 
 % Convert thresholds in seconds to frames.
-mergeThreshold = isecond2frame(0.1, fileFs, timeResolution);
-lengthThreshold = isecond2frame(0.1, fileFs, timeResolution);
+mergeThreshold = second2frame(0.1, fileFs, timeResolution);
+lengthThreshold = second2frame(0.1, fileFs, timeResolution);
 
 % Process detected vocalization segments
 idx = 1;
@@ -247,7 +268,7 @@ for ii = 1:size(boundaries, 1)
     xbe = (xbe - mean(xbe))/ (2*std(xbe)) + 0.5;
 
     % Apply threshold
-    avdmask = iapplyThreshold(xbe(:), 0.5, 0);
+    avdmask = applyThreshold(xbe(:), 0.5, 0);
 
     % Convert mask to roi
     b1 = binmask2sigroi(avdmask);
@@ -256,7 +277,7 @@ for ii = 1:size(boundaries, 1)
     frameroi = b3;
 
     % Convert frame-based roi to sample-based roi
-    energyBoundaries = iframe2sample_corrected(frameroi, fileFs, fileFs, numel(x), hopLen, hopLen, padLength);
+    energyBoundaries = frame2sample(frameroi, fileFs, fileFs, numel(x), hopLen, padLength);
 
     % Get the final boundaries in the original signal
     offset = boundaries(ii,1);
@@ -270,16 +291,16 @@ end
 out = newBoundaries(1:idx-1,:);
 end
 
-function out = isecond2frame(x, fileFs, timeResolution)
-%isecond2frame Convert seconds to frames
+function out = second2frame(x, fileFs, timeResolution)
+%second2frame Convert seconds to frames
 
 % This utility assumes the seconds are evenly spaced (not extended at the
 % boundaries).
 out = round(x*fileFs*timeResolution);
 end
 
-function xseconds = iframe2second(frame, timeResolution)
-%iframe2second Convert frames to seconds
+function xseconds = frame2second(frame, timeResolution)
+%frame2second Convert frames to seconds
 
 % Because the initial signal is front-padded in preprocessing, the first
 % frame is at time 0.
@@ -291,13 +312,13 @@ xseconds(:,1) = max(xseconds(:,1) - timeResolution/2, 0);
 xseconds(:,2) = xseconds(:,2) + timeResolution/2;
 end
 
-function samples = isecond2sample(xseconds, fileFs)
-%isecond2sample Convert seconds to samples
+function samples = second2sample(xseconds, fileFs)
+%second2sample Convert seconds to samples
 samples = max(floor(xseconds*fileFs), 1);
 end
 
-function samples = iframe2sample_corrected(frame, fileFs, targetFs, audioLength, windowLen, hopLen, padLen)
-%iframe2sample_corrected Convert frames to samples, accounting for preprocessing
+function samples = frame2sample(frame, fileFs, targetFs, audioLength, hopLen, padLen)
+%frame2sample Convert frames to samples, accounting for preprocessing
 %
 % This corrected version properly accounts for:
 % 1. The padding added during preprocessing
@@ -311,9 +332,9 @@ end
 
 % Convert frame indices to time positions (seconds) in the padded, resampled signal
 timeResolution = hopLen / targetFs;
-frameTimesInPaddedSignal = iframe2second(frame, timeResolution);
+frameTimesInPaddedSignal = frame2second(frame, timeResolution);
 
-% Adjust for padding (half window at beginning)
+% Adjust for padding (half window at beginning & end)
 paddingTimeOffset = padLen / targetFs;
 frameTimesInResampledSignal = frameTimesInPaddedSignal - paddingTimeOffset;
 
@@ -329,8 +350,8 @@ samples(:,1) = max(1, min(samples(:,1), audioLength));
 samples(:,2) = max(1, min(samples(:,2), audioLength));
 end
 
-function avdmask = iapplyThreshold(x, activationThreshold, deactivationThreshold)
-%iapplyThreshold Apply activation and deactivation thresholds to create
+function avdmask = applyThreshold(x, activationThreshold, deactivationThreshold)
+%applyThreshold Apply activation and deactivation thresholds to create
 %mask
 
 activation = (x >= activationThreshold);
@@ -352,14 +373,14 @@ avdmask = max(avdmask - 1, 0);
 
 end
 
-function prob = iclampProb(prob)
+function prob = clampProb(prob)
 % Because the model is a regression network, the output can be greater than 1
 % or less than 0. This is an edge case. Center clip the output to the range
 % [0,1] to interpret as probability.
 prob = max(min(prob, 1), 0);
 end
 
-function iconveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth, features)
+function conveniencePlot(audioIn, fileFs, targetFs, boundaries, prob, windowLen, hopLen, bandwidth, features)
 %conveniencePlot Convenience plot for gavdNetPostprocess
 
 % Create time vector
@@ -382,7 +403,7 @@ xlabel('Time (s)')
 % Plot the probability vector against time
 yyaxis right
 padLen = round(windowLen/2);
-sampleprob = iframeprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
+sampleprob = frameprob2sampleprob(prob, fileFs, targetFs, numel(audioIn), windowLen, hopLen, padLen);
 plot(ax1, t_waveform, sampleprob, Color=[0.8500 0.3250 0.0980], LineStyle="--", LineWidth=1.2)
 ylim([0,1])
 ylabel('Probability of target sound detection')
@@ -444,15 +465,16 @@ else
 end
 end
 
-function sampleprob = iframeprob2sampleprob(probs, fileFs, targetFs, N, windowLen, hopLen, padLen)
+function sampleprob = frameprob2sampleprob(probs, fileFs, targetFs, N, hopLen, padLen)
+
 % Convert frame probabilities to sample-based probabilities
 % This corrected version accounts for:
 % 1. The padding in the preprocessor (padLen)
 % 2. The window and hop length
 % 3. The different sample rates
 
-% Calculate key parameters
-frameDuration = hopLen / targetFs;  % Duration of each frame in seconds
+% % Calculate key parameters
+% frameDuration = hopLen / targetFs;  % Duration of each frame in seconds
 
 % Create array to hold per-sample probabilities at target sample rate
 paddedLength = ceil(N * targetFs / fileFs) + (2 * padLen);
@@ -488,5 +510,263 @@ elseif length(sampleprob_fileFs) < N
 end
 
 % Clamp probabilities to [0,1] range
-sampleprob = iclampProb(sampleprob_fileFs);
+sampleprob = clampProb(sampleprob_fileFs);
+end
+
+function splitBoundaries = splitLongEvents(boundaries, audioIn, fileFs, targetFs, probs, maxTargetCallDuration, bandwidth, hopLen, padLen)
+% splitLongEvents Split events that may contain multiple consecutive calls
+%
+% This function examines detected events and splits those that are likely
+% to contain multiple consecutive calls based on their duration relative to
+% maxTargetCallDuration. It first attempts to find split points using
+% probability dips, then falls back to energy envelope dips if needed.
+%
+% Inputs:
+%   boundaries - N-by-2 matrix of sample indices for event boundaries
+%   audioIn - Original audio signal
+%   fileFs - Original sample rate (Hz)
+%   targetFs - Target sample rate after resampling (Hz)
+%   probs - Probability vector from the neural network (frame-based)
+%   maxTargetCallDuration - Maximum expected duration of a single call (seconds)
+%   bandwidth - [lowFreq, highFreq] for bandpass filtering (Hz)
+%   hopLen - Hop length in samples for STFT
+%   padLen - Padding length used in preprocessing
+%
+% Output:
+%   splitBoundaries - Modified boundaries with long events split
+%
+% Ben Jancovich, 2025
+% Centre for Marine Science and Innovation
+% School of Biological, Earth and Environmental Sciences
+% University of New South Wales, Sydney, Australia
+%
+
+% Convert maxTargetCallDuration to samples
+maxDurationSamples = maxTargetCallDuration * fileFs;
+
+% Initialize output with pre-allocated space
+maxPossibleBoundaries = size(boundaries, 1) * ceil(max((boundaries(:,2) - boundaries(:,1) + 1) / maxDurationSamples));
+splitBoundaries = zeros(maxPossibleBoundaries, 2);
+outputIdx = 1;
+
+% Process each boundary
+for i = 1:size(boundaries, 1)
+    eventStart = boundaries(i, 1);
+    eventEnd = boundaries(i, 2);
+    eventDuration = eventEnd - eventStart + 1;
+    
+    % Calculate how many target calls this duration represents
+    durationRatio = eventDuration / maxDurationSamples;
+    
+    % If duration < 2x maxTargetCallDuration, don't split
+    if durationRatio < 2
+        splitBoundaries(outputIdx, :) = [eventStart, eventEnd];
+        outputIdx = outputIdx + 1;
+        continue;
+    end
+    
+    % Calculate number of splits needed
+    numSplits = floor(durationRatio) - 1;
+    
+    % Try to find split points using probability dips
+    splitPoints = findProbabilitySplitPoints(eventStart, eventEnd, fileFs, targetFs, probs, numSplits, hopLen, padLen);
+    
+    % If probability-based splitting failed, try energy-based splitting
+    if isempty(splitPoints)
+        splitPoints = findEnergySplitPoints(audioIn(eventStart:eventEnd), fileFs, bandwidth, numSplits);
+        % Adjust split points to be relative to original signal
+        if ~isempty(splitPoints)
+            splitPoints = splitPoints + eventStart - 1;
+        end
+    end
+    
+    % Create new boundaries based on split points
+    if isempty(splitPoints)
+        % No valid split points found, keep original boundary
+        splitBoundaries(outputIdx, :) = [eventStart, eventEnd];
+        outputIdx = outputIdx + 1;
+    else
+        % Add boundaries for each segment
+        allPoints = [eventStart, splitPoints(:)', eventEnd];
+        for j = 1:length(allPoints)-1
+            splitBoundaries(outputIdx, :) = [allPoints(j), allPoints(j+1)];
+            outputIdx = outputIdx + 1;
+        end
+    end
+end
+
+% Remove unused pre-allocated rows
+splitBoundaries = splitBoundaries(1:outputIdx-1, :);
+numEventsIn = size(boundaries,1);
+numEventsOut = size(splitBoundaries,1);
+if numEventsIn ~= numEventsOut
+    fprintf('\tLong event(s) detected - likely contains multiple discrete events.\n')
+    fprintf('\tSplitting %d events to %d.\n', numEventsIn, numEventsOut)
+end
+end
+
+function splitPoints = findProbabilitySplitPoints(eventStart, eventEnd, fileFs, targetFs, probs, numSplits, hopLen, padLen)
+% findProbabilitySplitPoints Find split points based on probability dips
+%
+% This function converts sample boundaries to frame indices and looks for
+% local minima in the probability vector to use as split points.
+
+% Convert sample boundaries to frame indices
+startFrame = sample2frame(eventStart, fileFs, targetFs, hopLen, padLen);
+endFrame = sample2frame(eventEnd, fileFs, targetFs, hopLen, padLen);
+
+% Ensure frame indices are within bounds
+startFrame = max(1, startFrame);
+endFrame = min(length(probs), endFrame);
+
+% Extract probability segment
+probSegment = probs(startFrame:endFrame);
+
+if length(probSegment) < 3 * (numSplits + 1)
+    % Not enough frames to find meaningful dips
+    splitPoints = [];
+    return;
+end
+
+% Find local minima in probability segment
+[~, minLocs] = findpeaks(-probSegment);
+
+if isempty(minLocs) || length(minLocs) < numSplits
+    % Not enough minima found
+    splitPoints = [];
+    return;
+end
+
+% Select split points approximately evenly spaced
+segmentLength = length(probSegment);
+idealPositions = linspace(0, segmentLength, numSplits + 2);
+idealPositions = idealPositions(2:end-1); % Remove start and end
+
+selectedMinima = zeros(numSplits, 1);
+for i = 1:numSplits
+    % Find minimum closest to ideal position
+    [~, closestIdx] = min(abs(minLocs - idealPositions(i)));
+    selectedMinima(i) = minLocs(closestIdx);
+end
+
+% Convert frame indices back to sample indices
+splitPoints = zeros(numSplits, 1);
+for i = 1:numSplits
+    frameIdx = startFrame + selectedMinima(i) - 1;
+    splitPoints(i) = frame2sampleScalar(frameIdx, fileFs, targetFs, hopLen, padLen);
+end
+
+% Ensure split points are within the event boundaries
+splitPoints = max(eventStart + 1, min(eventEnd - 1, splitPoints));
+
+% Sort and remove duplicates
+splitPoints = unique(splitPoints);
+
+end
+
+function splitPoints = findEnergySplitPoints(audioSegment, fileFs, bandwidth, numSplits)
+% findEnergySplitPoints Find split points based on energy envelope dips
+%
+% This function applies bandpass filtering and finds dips in the energy
+% envelope to determine split points.
+
+% Apply 12th order elliptical CTF bandpass filter
+% Note: ctffilt implements a Chebyshev Type I filter, not elliptical
+% Using default parameters for a 12th order filter
+filteredAudio = ctffilt(audioSegment, bandwidth(1), bandwidth(2), fileFs, 'pass', 12);
+
+% Calculate energy envelope
+% Using a window size of approximately 10-20 ms
+windowSize = round(0.015 * fileFs); % 15 ms window
+hopSize = round(windowSize / 2);
+
+% Compute short-time energy
+numWindows = floor((length(filteredAudio) - windowSize) / hopSize) + 1;
+energy = zeros(numWindows, 1);
+
+for i = 1:numWindows
+    startIdx = (i-1) * hopSize + 1;
+    endIdx = startIdx + windowSize - 1;
+    if endIdx <= length(filteredAudio)
+        energy(i) = sum(filteredAudio(startIdx:endIdx).^2);
+    end
+end
+
+% Smooth energy envelope
+smoothEnergy = movmean(energy, 5);
+
+% Find local minima in energy envelope
+[~, minLocs] = findpeaks(-smoothEnergy);
+
+if isempty(minLocs) || length(minLocs) < numSplits
+    % Not enough minima found
+    splitPoints = [];
+    return;
+end
+
+% Select split points approximately evenly spaced
+envelopeLength = length(smoothEnergy);
+idealPositions = linspace(0, envelopeLength, numSplits + 2);
+idealPositions = idealPositions(2:end-1); % Remove start and end
+
+selectedMinima = zeros(numSplits, 1);
+for i = 1:numSplits
+    % Find minimum closest to ideal position
+    [~, closestIdx] = min(abs(minLocs - idealPositions(i)));
+    selectedMinima(i) = minLocs(closestIdx);
+end
+
+% Convert envelope indices back to sample indices
+splitPoints = zeros(numSplits, 1);
+for i = 1:numSplits
+    % Map from envelope index to sample index
+    splitPoints(i) = round((selectedMinima(i) - 1) * hopSize + windowSize/2);
+end
+
+% Ensure split points are within valid range
+splitPoints = max(1, min(length(audioSegment), splitPoints));
+
+% Sort and remove duplicates
+splitPoints = unique(splitPoints);
+
+end
+
+function frameIdx = sample2frame(sampleIdx, fileFs, targetFs, hopLen, padLen)
+% sample2frame Convert sample index to frame index
+%
+% This function reverses the frame2sample conversion, accounting for
+% resampling and padding
+
+% Convert sample index to time in original signal
+timeInOriginal = (sampleIdx - 1) / fileFs;
+
+% Convert to time in resampled signal
+timeInResampled = timeInOriginal;
+
+% Account for padding offset
+timeInPaddedSignal = timeInResampled + padLen / targetFs;
+
+% Convert to frame index
+frameIdx = round(timeInPaddedSignal * targetFs / hopLen) + 1;
+
+end
+
+function sampleIdx = frame2sampleScalar(frameIdx, fileFs, targetFs, hopLen, padLen)
+% frame2sampleScalar Convert a single frame index to sample index
+%
+% Simplified version of frame2sample for scalar inputs
+
+% Convert frame index to time in padded signal
+timeResolution = hopLen / targetFs;
+timeInPaddedSignal = (frameIdx - 1) * timeResolution;
+
+% Adjust for padding
+timeInResampledSignal = timeInPaddedSignal - padLen / targetFs;
+
+% Ensure non-negative time
+timeInResampledSignal = max(0, timeInResampledSignal);
+
+% Convert to sample index in original signal
+sampleIdx = round(timeInResampledSignal * fileFs) + 1;
+
 end
