@@ -27,11 +27,12 @@ noise_library_path = "D:\DGS_noise_library";
 gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models";
 
 % Folder containing audio files to run the detector on:
-inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small";
+% inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small"; % For parameter tuning
+inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset"; % For final test
 
 % Results path for inference
-% inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset";
-inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results";
+% inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Postproc Parameter Tuning - 2007subset_small"; % For parameter tuning
+inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset"; % For final test
 
 %% Target Call Characteristics
 
@@ -128,13 +129,17 @@ minSilenceDuration = 1; % Silence causes the detector to return garbage.
 %                       may be 'silent' without being flagged as a silent
 %                       region. Suggested value = 1 (seconds)
 
+frameStandardization = 'true'; % Sets whether the frequency bins of the 
+%                               frames of features are re-standardized to
+%                               to their local, frame-level statistics.
+
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.15; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.1;  % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.1;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.01;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -143,7 +148,7 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 5;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.1;  % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 

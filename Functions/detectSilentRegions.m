@@ -80,7 +80,7 @@ thresholdLog = medianLogRMS - k * madLogRMS;
 threshold = 10^thresholdLog;
 
 % Apply minimum threshold to avoid noise floor issues
-noiseFloor = max(nonZeroRMS) * 1e-4; % 0.01% of peak
+noiseFloor = max(nonZeroRMS) * 1e-6;
 threshold = max(threshold, noiseFloor);
 
 % Find regions below threshold

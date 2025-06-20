@@ -558,21 +558,27 @@ for i = 1:size(boundaries, 1)
     % Calculate how many target calls this duration represents
     durationRatio = eventDuration / maxDurationSamples;
     
-    % If duration < 2x maxTargetCallDuration, don't split
-    if durationRatio < 2
+    % If duration < 1.5x maxTargetCallDuration, don't split
+    if durationRatio < 1.5
         splitBoundaries(outputIdx, :) = [eventStart, eventEnd];
         outputIdx = outputIdx + 1;
         continue;
     end
     
     % Calculate number of splits needed
-    numSplits = floor(durationRatio) - 1;
+    % For a duration of N times the max, we want to create N events
+    % This requires N-1 split points
+    numTargetEvents = round(durationRatio);
+    numSplits = numTargetEvents - 1;
+    
+    % Ensure at least 1 split if we got here
+    numSplits = max(1, numSplits);
     
     % Try to find split points using probability dips
     splitPoints = findProbabilitySplitPoints(eventStart, eventEnd, fileFs, targetFs, probs, numSplits, hopLen, padLen);
     
     % If probability-based splitting failed, try energy-based splitting
-    if isempty(splitPoints)
+    if isempty(splitPoints) || length(splitPoints) < numSplits
         splitPoints = findEnergySplitPoints(audioIn(eventStart:eventEnd), fileFs, bandwidth, numSplits);
         % Adjust split points to be relative to original signal
         if ~isempty(splitPoints)
@@ -581,11 +587,16 @@ for i = 1:size(boundaries, 1)
     end
     
     % Create new boundaries based on split points
-    if isempty(splitPoints)
+    if isempty(splitPoints) || length(splitPoints) < numSplits
         % No valid split points found, keep original boundary
         splitBoundaries(outputIdx, :) = [eventStart, eventEnd];
         outputIdx = outputIdx + 1;
     else
+        % Ensure we have exactly numSplits split points
+        if length(splitPoints) > numSplits
+            splitPoints = splitPoints(1:numSplits);
+        end
+        
         % Add boundaries for each segment
         allPoints = [eventStart, splitPoints(:)', eventEnd];
         for j = 1:length(allPoints)-1
@@ -611,6 +622,12 @@ function splitPoints = findProbabilitySplitPoints(eventStart, eventEnd, fileFs, 
 % This function converts sample boundaries to frame indices and looks for
 % local minima in the probability vector to use as split points.
 
+% Early return if no splits needed
+if numSplits < 1
+    splitPoints = [];
+    return;
+end
+
 % Convert sample boundaries to frame indices
 startFrame = sample2frame(eventStart, fileFs, targetFs, hopLen, padLen);
 endFrame = sample2frame(eventEnd, fileFs, targetFs, hopLen, padLen);
@@ -622,18 +639,51 @@ endFrame = min(length(probs), endFrame);
 % Extract probability segment
 probSegment = probs(startFrame:endFrame);
 
-if length(probSegment) < 3 * (numSplits + 1)
+% Check if segment is too short
+minFramesNeeded = 2 * (numSplits + 1); % At least 2 frames per segment
+if length(probSegment) < minFramesNeeded
     % Not enough frames to find meaningful dips
     splitPoints = [];
     return;
 end
 
 % Find local minima in probability segment
+if length(probSegment) < 3
+    % Too short for findpeaks
+    splitPoints = [];
+    return;
+end
+
 [~, minLocs] = findpeaks(-probSegment);
 
-if isempty(minLocs) || length(minLocs) < numSplits
-    % Not enough minima found
-    splitPoints = [];
+if isempty(minLocs)
+    % No minima found - try to create evenly spaced split points
+    segmentLength = eventEnd - eventStart + 1;
+    splitPoints = zeros(numSplits, 1);
+    for i = 1:numSplits
+        splitPoints(i) = eventStart + round(i * segmentLength / (numSplits + 1));
+    end
+    return;
+end
+
+if length(minLocs) < numSplits
+    % Not enough minima - use what we have and add evenly spaced points
+    splitPoints = zeros(numSplits, 1);
+    
+    % Use available minima
+    for i = 1:length(minLocs)
+        frameIdx = startFrame + minLocs(i) - 1;
+        splitPoints(i) = frame2sampleScalar(frameIdx, fileFs, targetFs, hopLen, padLen);
+    end
+    
+    % Add evenly spaced points for the remainder
+    segmentLength = eventEnd - eventStart + 1;
+    for i = length(minLocs)+1:numSplits
+        splitPoints(i) = eventStart + round(i * segmentLength / (numSplits + 1));
+    end
+    
+    % Sort and ensure uniqueness
+    splitPoints = unique(splitPoints);
     return;
 end
 
@@ -643,10 +693,20 @@ idealPositions = linspace(0, segmentLength, numSplits + 2);
 idealPositions = idealPositions(2:end-1); % Remove start and end
 
 selectedMinima = zeros(numSplits, 1);
+usedIndices = false(length(minLocs), 1);
+
 for i = 1:numSplits
-    % Find minimum closest to ideal position
-    [~, closestIdx] = min(abs(minLocs - idealPositions(i)));
+    % Find unused minimum closest to ideal position
+    distances = inf(length(minLocs), 1);
+    for j = 1:length(minLocs)
+        if ~usedIndices(j)
+            distances(j) = abs(minLocs(j) - idealPositions(i));
+        end
+    end
+    
+    [~, closestIdx] = min(distances);
     selectedMinima(i) = minLocs(closestIdx);
+    usedIndices(closestIdx) = true;
 end
 
 % Convert frame indices back to sample indices
@@ -662,6 +722,11 @@ splitPoints = max(eventStart + 1, min(eventEnd - 1, splitPoints));
 % Sort and remove duplicates
 splitPoints = unique(splitPoints);
 
+% Ensure we have the correct number of split points
+if length(splitPoints) > numSplits
+    splitPoints = splitPoints(1:numSplits);
+end
+
 end
 
 function splitPoints = findEnergySplitPoints(audioSegment, fileFs, bandwidth, numSplits)
@@ -670,10 +735,26 @@ function splitPoints = findEnergySplitPoints(audioSegment, fileFs, bandwidth, nu
 % This function applies bandpass filtering and finds dips in the energy
 % envelope to determine split points.
 
-% Apply 12th order elliptical CTF bandpass filter
-% Note: ctffilt implements a Chebyshev Type I filter, not elliptical
-% Using default parameters for a 12th order filter
-filteredAudio = ctffilt(audioSegment, bandwidth(1), bandwidth(2), fileFs, 'pass', 12);
+persistent b a
+
+% Early return if no splits needed
+if numSplits < 1
+    splitPoints = [];
+    return;
+end
+
+% Design band pass filter
+if isempty(b) || isempty(a)
+    n = 12; % Order
+    Rp = 0.1; % Passband Ripple
+    Rs = 90; % Stopband Ripple
+    nyq = fileFs/2; % Nyquist Freq
+    Wp = bandwidth / nyq; % Normalized cutoff frequency
+    [b,a] = ellip(n, Rp, Rs, Wp, "bandpass", "ctf");
+end
+
+% Apply bandpass filter
+filteredAudio = ctffilt(b, a, audioSegment);
 
 % Calculate energy envelope
 % Using a window size of approximately 10-20 ms
@@ -682,6 +763,18 @@ hopSize = round(windowSize / 2);
 
 % Compute short-time energy
 numWindows = floor((length(filteredAudio) - windowSize) / hopSize) + 1;
+
+% Ensure we have enough windows
+if numWindows < 2 * (numSplits + 1)
+    % Not enough windows - create evenly spaced split points
+    segmentLength = length(audioSegment);
+    splitPoints = zeros(numSplits, 1);
+    for i = 1:numSplits
+        splitPoints(i) = round(i * segmentLength / (numSplits + 1));
+    end
+    return;
+end
+
 energy = zeros(numWindows, 1);
 
 for i = 1:numWindows
@@ -696,11 +789,51 @@ end
 smoothEnergy = movmean(energy, 5);
 
 % Find local minima in energy envelope
+if length(smoothEnergy) < 3
+    % Too short for findpeaks - create evenly spaced split points
+    segmentLength = length(audioSegment);
+    splitPoints = zeros(numSplits, 1);
+    for i = 1:numSplits
+        splitPoints(i) = round(i * segmentLength / (numSplits + 1));
+    end
+    return;
+end
+
 [~, minLocs] = findpeaks(-smoothEnergy);
 
-if isempty(minLocs) || length(minLocs) < numSplits
-    % Not enough minima found
-    splitPoints = [];
+if isempty(minLocs)
+    % No minima found - create evenly spaced split points
+    segmentLength = length(audioSegment);
+    splitPoints = zeros(numSplits, 1);
+    for i = 1:numSplits
+        splitPoints(i) = round(i * segmentLength / (numSplits + 1));
+    end
+    return;
+end
+
+if length(minLocs) < numSplits
+    % Not enough minima - use what we have and add evenly spaced points
+    splitPoints = zeros(numSplits, 1);
+    
+    % Convert available minima to sample indices
+    for i = 1:length(minLocs)
+        splitPoints(i) = round((minLocs(i) - 1) * hopSize + windowSize/2);
+    end
+    
+    % Add evenly spaced points for the remainder
+    segmentLength = length(audioSegment);
+    for i = length(minLocs)+1:numSplits
+        splitPoints(i) = round(i * segmentLength / (numSplits + 1));
+    end
+    
+    % Sort and ensure uniqueness
+    splitPoints = unique(splitPoints);
+    
+    % Ensure correct number of points
+    if length(splitPoints) > numSplits
+        splitPoints = splitPoints(1:numSplits);
+    end
+    
     return;
 end
 
@@ -710,10 +843,20 @@ idealPositions = linspace(0, envelopeLength, numSplits + 2);
 idealPositions = idealPositions(2:end-1); % Remove start and end
 
 selectedMinima = zeros(numSplits, 1);
+usedIndices = false(length(minLocs), 1);
+
 for i = 1:numSplits
-    % Find minimum closest to ideal position
-    [~, closestIdx] = min(abs(minLocs - idealPositions(i)));
+    % Find unused minimum closest to ideal position
+    distances = inf(length(minLocs), 1);
+    for j = 1:length(minLocs)
+        if ~usedIndices(j)
+            distances(j) = abs(minLocs(j) - idealPositions(i));
+        end
+    end
+    
+    [~, closestIdx] = min(distances);
     selectedMinima(i) = minLocs(closestIdx);
+    usedIndices(closestIdx) = true;
 end
 
 % Convert envelope indices back to sample indices
@@ -728,6 +871,11 @@ splitPoints = max(1, min(length(audioSegment), splitPoints));
 
 % Sort and remove duplicates
 splitPoints = unique(splitPoints);
+
+% Ensure we have the correct number of split points
+if length(splitPoints) > numSplits
+    splitPoints = splitPoints(1:numSplits);
+end
 
 end
 

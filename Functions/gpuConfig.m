@@ -15,17 +15,18 @@ function varargout = gpuConfig()
 %   For optimal performance in deep learning and machine learning applications,
 %   this function should be called at the beginning of training/inference scripts.
 %
-% Ben Jancovich, 2024
+% Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
 %
 
-% Part 1: GPU Configuration
+% GPU Configuration
 numGPUs = gpuDeviceCount("available");
 deviceID = 1; % Default value
 
-% Check if GPU is available
+%% Check if GPU is available
+
 if numGPUs > 0
     % GPU is available
     fprintf('Found %d GPU device(s)\n', numGPUs);
@@ -83,7 +84,8 @@ else
     useGPU = false;
 end
 
-% Part 2: CPU Parallelism Configuration
+%% CPU Parallelism Configuration
+
 % Check if Parallel Computing Toolbox is available
 numWorkers = 0;
 if license('test', 'Distrib_Computing_Toolbox')
@@ -154,10 +156,10 @@ else
     fprintf('Parallel Computing Toolbox not available. Running in single-threaded mode.\n');
 end
 
-% Part 3: Memory Management
-% Get system memory information
-memInfo = memory;
-totalMem = memInfo.MemAvailableAllArrays / (1024^3); % Convert to GB
+%% Cross-platform Memory Management
+
+% Get system memory information using cross-platform approach
+totalMem = getSystemMemoryGB();
 fprintf('Available system memory: %.2f GB\n', totalMem);
 
 % Set memory options based on available resources
@@ -206,7 +208,8 @@ catch
     % Continue if not available
 end
 
-% Part 4: Set numerical precision options
+%% Set numerical precision options
+
 % For ML workloads, half precision can be faster on supported GPUs
 if useGPU
     % Check if GPU supports half precision
@@ -247,7 +250,8 @@ if useGPU
     end
 end
 
-% Part 5: Validate GPU operation
+%% Validate GPU operation
+
 if useGPU
     try
         % Run a simple test to verify GPU operation
@@ -277,7 +281,8 @@ if useGPU == true
     gpuInfo = gpuDevice(deviceID);
     bytesAvailable = gpuInfo.AvailableMemory;
 else
-    bytesAvailable = memInfo.MemAvailableAllArrays;
+    % For CPU-only systems, get available system memory in bytes
+    bytesAvailable = totalMem * 1e9; % Convert GB back to bytes
 end
 
 if nargout == 2
@@ -295,6 +300,115 @@ elseif nargout == 4
 else
     error('Invalid output arguments. This function returns 2, 3 or 4 output arguments.')
 end
+end
+
+% Cross-platform function to get system memory in GB
+function totalMemGB = getSystemMemoryGB()
+% Get total system memory in GB, with automatic OS platform detection.
+
+totalMemGB = 16; % Default fallback value in GB
+
+if ispc
+    % Windows: Use memory() function
+    try
+        memInfo = memory;
+        totalMemGB = memInfo.MemAvailableAllArrays / (1024^3);
+        return;
+    catch
+        warning('Failed to get memory info using memory() function on Windows');
+    end
+    
+elseif isunix && ~ismac
+    % Linux: Try multiple methods
+    
+    % Method 1: Parse /proc/meminfo
+    try
+        [status, result] = system('cat /proc/meminfo | grep MemAvailable');
+        if status == 0 && ~isempty(result)
+            % Extract memory value in kB and convert to GB
+            tokens = regexp(result, 'MemAvailable:\s*(\d+)\s*kB', 'tokens');
+            if ~isempty(tokens)
+                memKB = str2double(tokens{1}{1});
+                totalMemGB = memKB / (1024^2); % Convert kB to GB
+                return;
+            end
+        end
+    catch
+        % Continue to next method
+    end
+    
+    % Method 2: Use free command
+    try
+        [status, result] = system('free -b | grep Mem:');
+        if status == 0 && ~isempty(result)
+            % Parse free output to get available memory
+            tokens = regexp(result, '\s+(\d+)', 'tokens');
+            if length(tokens) >= 7
+                % Available memory is typically the 7th column in free output
+                availableBytes = str2double(tokens{7}{1});
+                totalMemGB = availableBytes / (1024^3);
+                return;
+            elseif length(tokens) >= 2
+                % Fallback: use total memory (2nd column)
+                totalBytes = str2double(tokens{2}{1});
+                totalMemGB = totalBytes / (1024^3);
+                return;
+            end
+        end
+    catch
+        % Continue to next method
+    end
+    
+elseif ismac
+    % macOS: Use vm_stat and sysctl
+    
+    % Method 1: Get page size and free pages using vm_stat
+    try
+        [status1, pagesize_result] = system('sysctl -n hw.pagesize');
+        [status2, vmstat_result] = system('vm_stat | grep "Pages free"');
+        
+        if status1 == 0 && status2 == 0
+            pagesize = str2double(strtrim(pagesize_result));
+            % Extract free pages
+            tokens = regexp(vmstat_result, 'Pages free:\s*(\d+)', 'tokens');
+            if ~isempty(tokens)
+                freePages = str2double(tokens{1}{1});
+                freeBytes = freePages * pagesize;
+                totalMemGB = freeBytes / (1024^3);
+                return;
+            end
+        end
+    catch
+        % Continue to next method
+    end
+    
+    % Method 2: Get total memory using sysctl
+    try
+        [status, result] = system('sysctl -n hw.memsize');
+        if status == 0 && ~isempty(result)
+            totalBytes = str2double(strtrim(result));
+            totalMemGB = totalBytes / (1024^3);
+            return;
+        end
+    catch
+        % Continue to fallback
+    end
+end
+
+% Final fallback: Try MATLAB's feature function
+try
+    memStats = feature('memstats');
+    if isfield(memStats, 'VirtualAddressSpace')
+        % This gives virtual address space, not physical memory, but better than nothing
+        totalMemGB = memStats.VirtualAddressSpace.Available / (1024^3);
+        return;
+    end
+catch
+    % Use default fallback
+end
+
+% If all methods fail, warn user and use fallback
+warning('Could not determine system memory. Using fallback value of %.1f GB', totalMemGB);
 end
 
 % Helper function to enable CUDA buffer (only for newer MATLAB versions)

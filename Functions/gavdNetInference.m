@@ -1,5 +1,5 @@
 function [probabilities, features, execTime, silenceMask, numAudioSegments] = gavdNetInference(audio, fs, ...
-    model, memoryAvailable, featureFraming, minSilenceDuration)
+    model, memoryAvailable, featureFraming, frameStandardization, minSilenceDuration, plotting)
 % This function extracts features (i.e, spectrograms) from audio files, then 
 % runs them through a trained animal call detection model. The output is 
 % a vector of probability scores, one for every spectrogram time bin.
@@ -20,7 +20,12 @@ function [probabilities, features, execTime, silenceMask, numAudioSegments] = ga
 %               'event-splt'    - Uses signal statistics to find regions of
 %                                 the audio file that have very high energy,
 %                                 and splits the audio file based on changes 
-%                                 in the mean of the signal envelope.
+%                                 in the mean of the signal envelope. If
+%                                 the spectrogram of any segment is longer 
+%                                 than the frameLength used for feature 
+%                                 framing at training time, then it is
+%                                 broken into frames of that size, with the
+%                                 same overlap used at training.
 %
 % NOTE: For long audio files with large variance in amplitude, the choice of 
 % feature framing mode can have a dramatic effect on performance. For audio 
@@ -103,7 +108,8 @@ switch featureFraming
         % Search for silence in the signal.
         silenceMask = detectSilentRegions(audio, fs, minSilenceDuration);
         if any(silenceMask)
-            fprintf('Silent regions found in audio file. Probabilities will be set to zero for these regions.')
+            fprintf('\tSilent regions found in audio file.\n')
+            fprintf('\tProbabilities will be set to zero for these regions.\n')
             % Transform silence mask from audio sample domain to the spectrogram time bin domain
             silenceMaskFeaturesDomain = maskToFeaturesDomain(silenceMask, ...
                 fs, ...
@@ -126,31 +132,28 @@ switch featureFraming
         % Break features into frames
         featureFrames = featureBuffer(features, ...
             model.featureFraming.frameLength, ...
-            model.featureFraming.frameOverlapPercent);
+            model.featureFraming.frameOverlapPercent, ...
+                    leftoverTimeBins='keep', ...
+                    standardizeFrames=frameStandardization);
        
-        % Run each frame through the model
-        probabilitiesFrames = cell(size(featureFrames));
-        fprintf('\tRunning frames through model.')
-        tic
-        for i = 1:length(featureFrames)
-            % Estimate max minibatch size
-            optimalMinibatchSize = estimateInferenceMinibatchSize(memoryAvailable, size(featureFrames{i}, 2));
+        % Estimate max minibatch size
+        optimalMinibatchSize = estimateInferenceMinibatchSize(memoryAvailable, size(featureFrames{1}, 2));
     
-            % Run Model in minibatch mode to save memory
-            probabilitiesFrames{i} = minibatchpredict(model.net, featureFrames{i}, ...
-                SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
+        % Run Model in minibatch mode to save memory
+        fprintf('\tRunning frames through model.\n')
+        tic
+        probabilitiesFrames = minibatchpredict(model.net, featureFrames, ...
+            SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
                    
-            % Move back to the CPU if on GPU
-            if isgpuarray(probabilitiesFrames{i})
-                probabilitiesFrames{i} = gather(probabilitiesFrames{i});
-            end
-            % Do some dots so the user knows we haven't hung 
-            if mod(i, 100) == 0
-                fprintf('.')
-            end
+        % Move back to the CPU if on GPU
+        if isgpuarray(probabilitiesFrames)
+            probabilitiesFrames = gather(probabilitiesFrames);
         end
+    
+        % Convert 3D matrix to nested cell array to pack correctly for
+        % concatenate function
+        probabilitiesFrames = (squeeze(num2cell(probabilitiesFrames, [1 2])))';
         execTime = toc;
-        fprintf('\n')
         
         % Stitch together probability vectors for each frame and take the 
         % average of overlapping elements
@@ -193,8 +196,8 @@ switch featureFraming
                 i, length(audioSegments))
             
             % Run Preprocessing & Feature Extraction on audio
-            featuresSegments{i} = gavdNetPreprocess(...
-                audioSegments{i}, ...
+            featuresSegments{i, 1} = gavdNetPreprocess(...
+                audioSegments{i, 1}, ...
                 fs, ...
                 model.preprocParams.fsTarget, ...
                 model.preprocParams.bandwidth, ... 
@@ -203,26 +206,65 @@ switch featureFraming
                 model.preprocParams.saturationRange);
         end
 
+        % If any of the featuresSegments are longer than the feature 
+        % frameLength used at training time, we need to further break these 
+        % into frames to make sure the GRU layers don't have to deal with
+        % context longer than they are trained for:
+        featureSegmentsFrames = cell(size(featuresSegments));
+        for i = 1:length(featuresSegments)
+            if size(featuresSegments{i, 1}, 2) > model.featureFraming.frameLength
+                % Break features into frames
+                featureSegmentsFrames{i, 1} = featureBuffer(featuresSegments{i, 1}, ...
+                    model.featureFraming.frameLength, ...
+                    model.featureFraming.frameOverlapPercent, ...
+                    leftoverTimeBins='keep', ...
+                    standardizeFrames=frameStandardization);
+            else
+                % Treat the whole segment as a single frame
+                featureSegmentsFrames{i, 1} = {featuresSegments{i, 1}};
+            end
+        end
+       
         % Run each frame through the model
-        probabilitiesSegments = cell(size(featuresSegments));
+        probabilitiesSegmentsFrames = cell(size(featureSegmentsFrames));
+        probabilitiesSegments = cell(size(audioSegments));
         fprintf('\tRunning segments through model.')
         tic
-        for i = 1:length(featuresSegments)
+        for i = 1:length(featureSegmentsFrames)
             % Estimate max minibatch size
-            optimalMinibatchSize = estimateInferenceMinibatchSize(memoryAvailable, size(featuresSegments{i}, 2));
-    
+            optimalMinibatchSize = estimateInferenceMinibatchSize(memoryAvailable, size(featureSegmentsFrames{i, 1}{1, 1}, 2));
+        
             % Run Model in minibatch mode to save memory
-            probabilitiesSegments{i} = minibatchpredict(model.net, featuresSegments{i}, ...
+            probabilitiesSegmentsFrames{i, 1} = minibatchpredict(model.net, featureSegmentsFrames{i, 1}, ...
                 SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
-            % Do some dots so the user knows we haven't hung 
-            if mod(i, 100) == 0
-                fprintf('.')
+        
+            % Move back to the CPU if on GPU
+            if isgpuarray(probabilitiesSegmentsFrames{i, 1})
+                probabilitiesSegmentsFrames{i, 1} = gather(probabilitiesSegmentsFrames{i, 1});
             end
+        
+            % Convert 3D matrix to nested cell array to pack correctly for
+            % concatoate function
+            probabilitiesSegmentsFrames{i, 1} = (squeeze(num2cell(probabilitiesSegmentsFrames{i, 1}, [1 2])))';
+            % This is a 1x177 cell
+
+            % Stitch together probability vectors for each frame and 
+            % take the average of overlapping elements
+            numSpectrogramTimeBins = size(featuresSegments{i, 1}, 2);
+            probabilitiesSegments{i, 1} = concatenateOverlappingProbs(probabilitiesSegmentsFrames{i, 1}, ...
+                numSpectrogramTimeBins, model.featureFraming.frameHopLength);
+            % This is 110843x1 double & doesn't contain NaN
+
+            % Do some dots so the user knows we haven't hung 
+            fprintf('.')
         end
         fprintf('\n')
         execTime = toc;
-        
-        % Stitch together probability vectors for each segment
+
+        % Transpose 
+        probabilitiesSegments = cellfun(@transpose, probabilitiesSegments, UniformOutput=false);
+
+         % Stitch together probability vectors for each segment
         if ~isscalar(probabilitiesSegments)
             [probabilities, features] = segmentStitcher(probabilitiesSegments, ...
             splitIndices, model.preprocParams.windowLen, ...
@@ -231,7 +273,7 @@ switch featureFraming
             probabilities = probabilitiesSegments{1};
             features = featuresSegments{1};
         end
-
+        
         % If there were silent parts of the audio signal, we should not
         % trust the probabilties for those samples.
         if any(silenceMask)
@@ -243,6 +285,29 @@ switch featureFraming
                 
     otherwise
         error('Invalid entry for argument "featureFraming".')
+end
+
+duration = length(audio)/fs;
+dt = 1/fs;
+tSamples = 0:dt:duration-dt;
+if plotting == true
+    figure(1)
+    tiledlayout(2,1)
+    nexttile
+    plot(tSamples, audio)
+    xlabel('Time (s)')
+    ylabel('Amplitude')
+    xlim([tSamples(1), tSamples(end)])
+    title('Audio Signal')
+    
+    nexttile
+    plot(probabilities)
+    xlabel('Time (s)')
+    ylabel('Probability')
+    ylim([0, 1.1])
+    xlim([1, length(probabilities)])
+    title('Probability of Positive Detection')
+
 end
 end
 

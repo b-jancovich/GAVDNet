@@ -15,7 +15,6 @@
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
 % 
-
 %% Init
 
 clear
@@ -28,6 +27,8 @@ clear persistent
 % Path to the config file:
 configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 % configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+
+plotting = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -155,11 +156,11 @@ if ~exist(saveNamePathRaw, 'file')
             results(fileIdx).fileSamps, ...
             results(fileIdx).fileFs);
     
-        % Run Preprocessing and inference 
+        % Run preprocessing and inference 
         [results(fileIdx).probabilities, ~, execTime, ...
             results(fileIdx).silenceMask, numAudioSegments] = gavdNetInference(...
             audioIn, fileInfo.SampleRate, model, bytesAvailable, ...
-            featureFraming, minSilenceDuration);
+            featureFraming, frameStandardization, minSilenceDuration, plotting);
 
         % Report execution time and seconds of audio with high probability
         numTimeBinsProbHigh = sum(results(fileIdx).probabilities > 0.5);
@@ -178,12 +179,6 @@ if ~exist(saveNamePathRaw, 'file')
         % Increment the file index for the next iteration
         fileIdx = fileIdx + 1;
     end
-
-    % Count how many files are all nan, contain any nan, or are all silent
-    numFilesAllNanProbs = sum([results.probsAllNan]);
-    numFilesAnyNanProbs = sum([results.probsAnyNan]);
-    numFilesAllSilence = sum([results.audioAllSilence]);
-    numFilesAnySilence = sum([results.audioAnySilence]);
 
     % Save the output
     save(saveNamePathRaw, 'results', '-v7.3')
@@ -235,7 +230,7 @@ results = flattenDetections(results);
 
 %% Save the output
 saveNamePath = fullfile(inferenceOutputPath, 'detector_results_postprocessed.mat');
-save(saveNamePath, 'results', 'featureFraming', 'postProcOptions', '-v7.3')
+save(saveNamePath, 'results', 'featureFraming', 'frameStandardization', 'postProcOptions', '-v7.3')
 
 fprintf('Saved %g post processed detections to %s\n', length(results), inferenceOutputPath)
 diary off

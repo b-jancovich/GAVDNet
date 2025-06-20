@@ -429,7 +429,7 @@ if buildXandT == true
 
         % Buffer training features into frames
         XTrainBuffered = featureBuffer(XTrain, frameLength, ...
-            frameOverlapPercent);
+            frameOverlapPercent, "standardizeFrames", 'true');
 
         % Buffer training masks into frames
         TTrainBuffered = featureBuffer(TTrain, frameLength, ...

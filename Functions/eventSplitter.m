@@ -42,16 +42,20 @@ function [audioSegments, splitIndices, changePtsIndices] = eventSplitter(audio, 
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
 %
+persistent b a
+
 % Remove DC Offset
 audioMeasure = audio - mean(audio);
 
 % Design high pass filter @ 5Hz
-n = 8; % Order
-Rp = 0.1; % Passband Ripple
-Rs = 90; % Stopband Ripple
-nyq = fs/2; % Nyquist Freq
-Wp = 5 / nyq; % Normalized cutoff frequency
-[b,a] = ellip(n, Rp, Rs, Wp, "high", "ctf");
+if isempty(b) || isempty(a)
+    n = 8; % Order
+    Rp = 0.1; % Passband Ripple
+    Rs = 90; % Stopband Ripple
+    nyq = fs/2; % Nyquist Freq
+    Wp = 5 / nyq; % Normalized cutoff frequency
+    [b,a] = ellip(n, Rp, Rs, Wp, "high", "ctf");
+end
 
 % Filter audio
 audioMeasure = ctffilt(b, a, audioMeasure);

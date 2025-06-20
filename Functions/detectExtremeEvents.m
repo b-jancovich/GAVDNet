@@ -160,11 +160,11 @@ function [isExtreme, extremeScore, diagnostics] = detectExtremeEvents(audioEnv)
     %         extremeScore, extremeThreshold, iif(isExtreme, 'EXTREME EVENT DETECTED', 'Normal'))
 end
 
-function result = iif(condition, trueValue, falseValue)
-    % Inline conditional function (MATLAB doesn't have ternary operator)
-    if condition
-        result = trueValue;
-    else
-        result = falseValue;
-    end
-end
+% function result = iif(condition, trueValue, falseValue)
+%     % Inline conditional function (MATLAB doesn't have ternary operator)
+%     if condition
+%         result = trueValue;
+%     else
+%         result = falseValue;
+%     end
+% end

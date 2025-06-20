@@ -119,6 +119,7 @@ switch pcen
         
         % Standardize to zero mean and unity standard deviation (original, deactivated)
         varargout{1} = standardizeMelSpect(spectMeldB);
+        
     case true
         % Process Spectrogram with Mel Filterbank (PCEN Mode)
         spectMel = spectrogramToMel(spect, fsTarget, FFTLen, bandwidth);
