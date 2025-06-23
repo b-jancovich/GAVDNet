@@ -267,8 +267,7 @@ switch featureFraming
          % Stitch together probability vectors for each segment
         if ~isscalar(probabilitiesSegments)
             [probabilities, features] = segmentStitcher(probabilitiesSegments, ...
-            splitIndices, model.preprocParams.windowLen, ...
-            model.preprocParams.hopLen, featuresSegments); 
+                splitIndices, model.preprocParams, fs, featuresSegments);
         else
             probabilities = probabilitiesSegments{1};
             features = featuresSegments{1};

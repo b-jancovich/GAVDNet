@@ -10,20 +10,25 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Path to detector results file (postprocessed):
-inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Postproc Parameter Tuning - 2007subset_small\detector_results_postprocessed.mat";
+% inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Postproc Parameter Tuning - 2007subset_small\detector_results_postprocessed.mat";
 % inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\detector_results_postprocessed.mat";
+% inferenceResultsPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small\detector_results_postprocessed.mat";
+inferenceResultsPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\detector_results_postprocessed.mat";
+
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small\test_dataset_detection_list.mat";
+% groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small\test_dataset_detection_list.mat"; 
 % groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
+% groundtruthPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\Casey2014.Bm.Ant-Z.selections_SUBSET.txt";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 
 % Test dataset source
-gtFormat = 'CTBTO'; % Either "CTBTO" or "SORP"
+gtFormat = 'SORP'; % Either "CTBTO" or "SORP"
 
 % True known call duration (for isolating audio for missed detections)
 maxDetectionDuration = 40; % (seconds)

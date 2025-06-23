@@ -27,11 +27,11 @@ noise_library_path = "D:\SORP_BmAntZ_noise_library";
 gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models";
 
 % Folder containing audio files to run the detector on:
-% inferenceAudioPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\wav";
-inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav";
+% inferenceAudioPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\wav"; % Parameter Tuning
+inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav"; 
 
 % Results path for inference
-% inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small";
+% inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small"; % Parameter Tuning
 inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014";
 
 %% Target Call Characteristics
@@ -58,17 +58,17 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 %% Data Augmentation Parameters
 
 % Parameters for augmenting clean samples
-snrRange = [-3, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
+snrRange = [-6, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
 c = 1500;                               % Typical sound propagation velocity (m/s)
-speedup_factor_range = [0.97, 1.02];    % Time stretching factor range
-lpf_cutoff_range = [35, 50];            % Low-pass filter cutoff range (Hz)
-hpf_cutoff_range = [15, 30];            % Low-pass filter cutoff range (Hz)
+speedup_factor_range = [0.97, 1.03];    % Time stretching factor range
+lpf_cutoff_range = [];                  % Low-pass filter cutoff range (Hz)
+hpf_cutoff_range = [];                  % Low-pass filter cutoff range (Hz)
 source_velocity_range = [1, 30];        % Source velocity range for Doppler (m/s)
 distortionRange = [0.1, 0.5];           % Nonlinear distortion magnitude range
 decayTimeRange = [0.1, 5];              % Reverberation decay time range (s)
 trans_loss_strength_range = [0.1, 0.5]; % Transmission loss magnitude range
 trans_loss_density_range = [0.1, 0.5];  % Transmission loss event density range
-end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to 
+end_trim_duration_range = [0.1, 3];    % Maximum duration of signal to 
 %                                       randomly remove from the end of
 %                                       clean signals (s)
 
@@ -135,11 +135,11 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.05; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.0005; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.0002;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.00001;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -148,7 +148,7 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.1;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 1;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
