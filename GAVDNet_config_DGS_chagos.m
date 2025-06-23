@@ -1,5 +1,5 @@
 % GAVDNet Training Configuration File
-% B.musculus ssp. brevicauda "Chagos Call" (aka. "Diego Garcia Downsweep")
+% B.musculus ssp. brevicauda "Chagos Song" (aka. "Diego Garcia Downsweep")
 %
 % This is a configuration file for training the GAVDNet model on the Chagos 
 % pygmy blue whale call. It provides all parameters needed for the GAVDNet 
@@ -135,11 +135,11 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.1;  % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.01;  % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.01;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.002;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -148,11 +148,11 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.1;  % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.01;  % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.1; % The length threshold is set based on 
+postProcOptions.LT_scaler = 0.85; % The length threshold is set based on 
 %                           the mean length of the calls in the training
 %                           set, scaled by this number. Any detection peak
 %                           shorter than the length threshold is excluded.

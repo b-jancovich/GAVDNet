@@ -27,11 +27,12 @@ noise_library_path = "D:\SORP_BmAntZ_noise_library";
 gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models";
 
 % Folder containing audio files to run the detector on:
-% inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_Testing\BmAntZ_SORP\TestSubset";
+% inferenceAudioPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\wav";
 inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav";
 
 % Results path for inference
-inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results";
+% inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small";
+inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014";
 
 %% Target Call Characteristics
 
@@ -128,13 +129,17 @@ minSilenceDuration = 1; % Silence causes the detector to return garbage.
 %                       may be 'silent' without being flagged as a silent
 %                       region. Suggested value = 1 (seconds)
 
+frameStandardization = 'true'; % Sets whether the frequency bins of the 
+%                               frames of features are re-standardized to
+%                               to their local, frame-level statistics.
+
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.5; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.05; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.1;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.0002;  % Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -143,11 +148,11 @@ postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.2;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.1;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.5; % the Length threshold is set based on 
+postProcOptions.LT_scaler = 1; % the Length threshold is set based on 
 %                           the length of the shortest song in the training
 %                           set, scaled by this number
 

@@ -25,10 +25,10 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
-plotting = false;
+plotting = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -163,11 +163,11 @@ if ~exist(saveNamePathRaw, 'file')
             featureFraming, frameStandardization, minSilenceDuration, plotting);
 
         % Report execution time and seconds of audio with high probability
-        numTimeBinsProbHigh = sum(results(fileIdx).probabilities > 0.5);
+        numTimeBinsProbHigh = sum(results(fileIdx).probabilities > postProcOptions.AT);
         secondsBinsProbHigh = numTimeBinsProbHigh * windowDur;
         fprintf('\tInference Completed in %.2f seconds\n', execTime)
         fprintf('\tTotal audio duration: %.2f seconds\n', results(fileIdx).fileDuration)
-        fprintf('\tDuration with raw detection probability > 50%%: %.2f seconds.\n\n', secondsBinsProbHigh)
+        fprintf('\tDuration with raw detection probability > Activation Threshold%%: %.2f seconds.\n\n', secondsBinsProbHigh)
         
         % Write diagnostic information to the results struct
         results(fileIdx).probsAllNan = all(isnan(results(fileIdx).probabilities));
@@ -226,7 +226,7 @@ end
 
 % Detections are one row per audio file, potentially multiple detections per row.
 % Flatten detections to one row per detection.
-results = flattenDetections(results);
+results = flattenDetections(results, model.preprocParams);
 
 %% Save the output
 saveNamePath = fullfile(inferenceOutputPath, 'detector_results_postprocessed.mat');

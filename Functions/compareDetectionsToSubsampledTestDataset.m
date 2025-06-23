@@ -341,7 +341,7 @@ if numResultsDetections_Evaluated == 0 && numGroundtruthDetections == 0
         'DetectionEndTime', {}, 'DetectionStartSamp', [], ...
         'DetectionEndSamp', [], 'AudioFilename', {}, ...
         'AudioFs', [], 'Confidence', [], ...
-        'DetProbsSampleDomain', []);
+        'probabilities', []);
     falseNegatives = struct('DetectionStartTime', {}, ...
         'DetectionEndTime', {}, 'DetectionStartSamp', [], ...
         'DetectionEndSamp', [], 'AudioFilename', {}, 'AudioFs', []);
@@ -432,7 +432,7 @@ if numFalsePositives > 0
     fpResultIndices_in_evaluated_list = find(resultLabels == 0); 
     fpCount = length(fpResultIndices_in_evaluated_list);
 
-    fpFieldNames = {'DetectionStartTime', 'DetectionEndTime', 'DetectionStartSamp', 'DetectionEndSamp', 'AudioFilename', 'AudioFs', 'Confidence', 'DetProbsSampleDomain'};
+    fpFieldNames = {'DetectionStartTime', 'DetectionEndTime', 'DetectionStartSamp', 'DetectionEndSamp', 'AudioFilename', 'AudioFs', 'Confidence', 'probabilities'};
     fpCellArray = cell(fpCount, length(fpFieldNames));
     falsePositives = cell2struct(fpCellArray, fpFieldNames, 2);
     
@@ -476,15 +476,15 @@ if numFalsePositives > 0
         else 
             falsePositives(i).Confidence = NaN; 
         end
-        if isfield(currentResultStruct, 'detProbsSampleDomain') && isnumeric(currentResultStruct.detProbsSampleDomain)
-            falsePositives(i).DetProbsSampleDomain = currentResultStruct.detProbsSampleDomain; 
+        if isfield(currentResultStruct, 'probabilities') && isnumeric(currentResultStruct.probabilities)
+            falsePositives(i).probabilities = currentResultStruct.probabilities; 
         else 
-            falsePositives(i).DetProbsSampleDomain = []; 
+            falsePositives(i).probabilities = []; 
         end
     end
     fprintf('Created false positives struct array with %d entries.\n', fpCount);
 else
-    falsePositives = struct('DetectionStartTime', {}, 'DetectionEndTime', {}, 'DetectionStartSamp', [], 'DetectionEndSamp', [], 'AudioFilename', {}, 'AudioFs', [], 'Confidence', [], 'DetProbsSampleDomain', []);
+    falsePositives = struct('DetectionStartTime', {}, 'DetectionEndTime', {}, 'DetectionStartSamp', [], 'DetectionEndSamp', [], 'AudioFilename', {}, 'AudioFs', [], 'Confidence', [], 'probabilities', []);
     fprintf('No false positives found (numFalsePositives calculated as %d).\n', numFalsePositives);
 end
 
