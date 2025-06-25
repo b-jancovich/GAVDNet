@@ -58,11 +58,11 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 %% Data Augmentation Parameters
 
 % Parameters for augmenting clean samples
-snrRange = [-3, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
+snrRange = [-6, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
 c = 1500;                               % Typical sound propagation velocity (m/s)
-speedup_factor_range = [0.97, 1.02];    % Time stretching factor range
-lpf_cutoff_range = [35, 50];            % Low-pass filter cutoff range (Hz)
-hpf_cutoff_range = [15, 30];            % Low-pass filter cutoff range (Hz)
+speedup_factor_range = [0.97, 1.03];    % Time stretching factor range
+lpf_cutoff_range = [37, 50];            % Low-pass filter cutoff range (Hz)
+hpf_cutoff_range = [10, 34];            % Low-pass filter cutoff range (Hz)
 source_velocity_range = [1, 30];        % Source velocity range for Doppler (m/s)
 distortionRange = [0.1, 0.5];           % Nonlinear distortion magnitude range
 decayTimeRange = [0.1, 5];              % Reverberation decay time range (s)
@@ -77,7 +77,7 @@ end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to
 % Parameters for building synthetic training sequences
 numSequences = 1200;    % Number of sequences to generate
 sequenceDuration = 1800;% Duration of training sequences to build (seconds)
-minCallSeparation = 1;  % Minimum separation between consecutive calls in a sequence (seconds)
+minCallSeparation = 0.5;  % Minimum separation between consecutive calls in a sequence (seconds)
 
 % NOTE: The number of calls per sequence is calculated automatically to 
 % ensure that approximately 50% of every sequence's duration contains the 
@@ -132,30 +132,34 @@ minSilenceDuration = 1; % Silence causes the detector to return garbage.
 frameStandardization = 'true'; % Sets whether the frequency bins of the 
 %                               frames of features are re-standardized to
 %                               to their local, frame-level statistics.
+%                               This setting applies to inference only, and
+%                               takes effect in "event-split" and "simple"
+%                               feature framing modes, but not in 'none'.
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.01;  % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.001;% Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.002;  % Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.0007;% Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.AEAVD = 0; % Apply Energy Animal Vocalisation Detection
+postProcOptions.AEAVD = 0;  % Apply Energy Animal Vocalisation Detection
 %                           Specifies whether to apply an energy-based 
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.01;  % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.01;   % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.85; % The length threshold is set based on 
-%                           the mean length of the calls in the training
-%                           set, scaled by this number. Any detection peak
-%                           shorter than the length threshold is excluded.
+postProcOptions.LT_scaler = 0.3; % The length threshold is set based on 
+%                           the mean duration of the calls in the training
+%                           set, multiplied by this number. Any detection 
+%                           peak shorter than the length threshold is 
+%                           excluded.
 
 %% Ground Truth Comparison Parameters
 

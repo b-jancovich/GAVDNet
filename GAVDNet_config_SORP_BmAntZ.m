@@ -135,7 +135,7 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.0005; % Activation Threshold. Sets the probability 
+postProcOptions.AT = 0.0001; % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
