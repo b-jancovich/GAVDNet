@@ -184,6 +184,9 @@ fprintf('Total results entries initially loaded: %d\n', length(resultsData.resul
 fprintf('Results entries considered (numResultsDetections metric source): %d\n', numResultsOriginal_beforeNaNFilter);
 fprintf('Results entries after time/score validation (evaluatedResultCount metric): %d\n', numResultsDetections_Evaluated);
 
+% Draw figure of confidence distribution
+analyseConfidenceDistribution(resultsData.results);
+
 %% Extract detections from groundtruth (format-specific)
 
 if strcmp(gtFormat, 'SORP')

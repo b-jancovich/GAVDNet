@@ -1,14 +1,16 @@
-% GAVDNet Inference
+% GAVDNet Inference System
 %
 % Run audio files throught the trained model to detect the target animal
 % call.
 %
-% Mode inference runs on audio files in a loop, then saves raw results to
-% disk (raw results = probabilities for target call pressence per STFT time 
+% Model inference runs on audio files in a loop, then saves raw results to
+% disk (raw results = probabilities for target call presence per STFT time 
 % bin). The post processing procedure that converts these raw probabilities
 % into discrete detection boundaries is run in a second loop after
 % reloading the raw data. The script is built this way so that post
-% processing parameters can be iteratively fine tuned without having to run 
+% processing parameters can be iteratively fine tuned without having to run
+% all the audio through the model again, which is computationally
+% expensive, time consuming and energy inefficient.
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
@@ -28,7 +30,7 @@ clear persistent
 % configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
-plotting = true;
+plotting = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

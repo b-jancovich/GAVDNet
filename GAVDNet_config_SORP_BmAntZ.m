@@ -27,20 +27,20 @@ noise_library_path = "D:\SORP_BmAntZ_noise_library";
 gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models";
 
 % Folder containing audio files to run the detector on:
-% inferenceAudioPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\wav"; % Parameter Tuning
-inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav"; 
+inferenceAudioPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\wav"; % Parameter Tuning
+% inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav"; 
 
 % Results path for inference
-% inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small"; % Parameter Tuning
-inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014";
+inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small"; % Parameter Tuning
+% inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014";
 
 %% Target Call Characteristics
 
 % Frequency parameters for the target call
-initial_freq = 26.5;        % Mean frequency of the fundamental component (Hz)
+initial_freq = 25.8;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2015;    % The year of the initial_freq measurement
 pitch_shift_rate = 0.135;     % Annual frequency shift rate (Hz/year)
-pitch_shift_tol = 0.01;       % Additional tolerance for pitch shifting (Hz)
+pitch_shift_tol = 0.5;       % Additional range of variation in pitch shifting to account for intra-seasonal shift (Hz)
 detect_year_range = [2013, 2015]; % Time period represented by the synthetic dataset
 
 %% Input Audio Cleanup Parameters
@@ -58,26 +58,26 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 %% Data Augmentation Parameters
 
 % Parameters for augmenting clean samples
-snrRange = [-6, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
 c = 1500;                               % Typical sound propagation velocity (m/s)
 speedup_factor_range = [0.97, 1.03];    % Time stretching factor range
 lpf_cutoff_range = [];                  % Low-pass filter cutoff range (Hz)
 hpf_cutoff_range = [];                  % Low-pass filter cutoff range (Hz)
 source_velocity_range = [1, 30];        % Source velocity range for Doppler (m/s)
 distortionRange = [0.1, 0.5];           % Nonlinear distortion magnitude range
-decayTimeRange = [0.1, 5];              % Reverberation decay time range (s)
-trans_loss_strength_range = [0.1, 0.5]; % Transmission loss magnitude range
+decayTimeRange = [0.1, 10];             % Reverberation decay time range (s)
+trans_loss_strength_range = [0.1, 0.75];% Transmission loss magnitude range
 trans_loss_density_range = [0.1, 0.5];  % Transmission loss event density range
-end_trim_duration_range = [0.1, 3];    % Maximum duration of signal to 
+end_trim_duration_range = [0.1, 1];     % Maximum duration of signal to 
 %                                       randomly remove from the end of
 %                                       clean signals (s)
 
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-numSequences = 1200;    % Number of sequences to generate
-sequenceDuration = 1800;% Duration of training sequences to build (seconds)
-minCallSeparation = 1;  % Minimum separation between consecutive calls in a sequence (seconds)
+snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+numSequences = 1200;        % Number of sequences to generate
+sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
+minCallSeparation = 1;      % Minimum separation between consecutive calls in a sequence (seconds)
 
 % NOTE: The number of calls per sequence is calculated automatically to 
 % ensure that approximately 50% of every sequence's duration contains the 
