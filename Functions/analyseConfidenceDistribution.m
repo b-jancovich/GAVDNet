@@ -1,5 +1,5 @@
 % Analyse confidence score distributions
-function analyseConfidenceDistribution(inferenceResults)
+function [confPercentiles, percentiles] = analyseConfidenceDistribution(inferenceResults)
 %
 % Ben Jancovich, 2025  
 % Centre for Marine Science and Innovation
@@ -20,8 +20,4 @@ ylabel('Probability');
 % Calculate percentiles
 percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99];
 confPercentiles = prctile(confidenceScores, percentiles);
-fprintf('Confidence Percentiles:\n');
-for i = 1:length(percentiles)
-    fprintf('%d%%: %.6f\n', percentiles(i), confPercentiles(i));
-end
 end

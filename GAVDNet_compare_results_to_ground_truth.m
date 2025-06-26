@@ -115,7 +115,6 @@ load(inferenceResultsPath, "featureFraming");
 [metrics, FP, FN] = compareDetectionsToSubsampledTestDataset(...
     groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration, gtFormat);
 
-
 %% Save Results
 
 % Compile results and test params
