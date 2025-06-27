@@ -74,7 +74,7 @@ end_trim_duration_range = [0.1, 1];     % Maximum duration of signal to
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+snrRange = [-3, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
 numSequences = 1200;        % Number of sequences to generate
 sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
 minCallSeparation = 1;      % Minimum separation between consecutive calls in a sequence (seconds)
@@ -132,6 +132,9 @@ minSilenceDuration = 1; % Silence causes the detector to return garbage.
 frameStandardization = 'true'; % Sets whether the frequency bins of the 
 %                               frames of features are re-standardized to
 %                               to their local, frame-level statistics.
+%                               This setting applies to inference only, and
+%                               takes effect in "event-split" and "simple"
+%                               feature framing modes, but not in 'none'.
 
 %% Inference Post-Processing Parameters
 

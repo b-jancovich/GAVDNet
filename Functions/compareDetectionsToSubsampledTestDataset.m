@@ -20,11 +20,11 @@ function [metrics, falsePositives, falseNegatives] = compareDetectionsToSubsampl
 %   falseNegatives - Struct array (1xN or Nx1) containing details of unmatched ground truth detections
 %
 % Metrics included:
-%   - numResultsDetections: Number of detections in results (before score/time filtering)
-%   - numGroundtruthDetections: Number of detections in groundtruth
-%   - numTruePositives: Number of true positive detections (based on optimal matching)
-%   - numFalsePositives: Number of false positive detections (based on optimal matching)
-%   - numFalseNegatives: Number of false negative detections (based on optimal matching)
+%   - nPositivesDetector: Number of detections in results (before score/time filtering)
+%   - nPositivesGT: Number of detections in groundtruth
+%   - nTruePositives: Number of true positive detections (based on optimal matching)
+%   - nFalsePositives: Number of false positive detections (based on optimal matching)
+%   - nFalseNegatives: Number of false negative detections (based on optimal matching)
 %   - recall: Recall/Sensitivity score
 %   - precision: Precision score
 %   - f1Score: F1 score
@@ -60,14 +60,14 @@ resultsData = load(inferenceResultsPath);
 inferenceResults = resultsData.results;
 
 % Process all 'validResults'
-numResultsDetections = length(inferenceResults);
+nPositivesDetector = length(inferenceResults);
 
 % Initialize arrays for all potential detections, using NaN for easy filtering later
-resultsTimes = NaN(numResultsDetections, 1);
-confidenceScores = NaN(numResultsDetections, 1);
-resultsFileNames = cell(numResultsDetections, 1);
-resultsFileDurations = NaN(numResultsDetections, 1);
-originalIndicesInValidResults = (1:numResultsDetections)'; % Maps back to 'validResults' (which is resultsData.results)
+resultsTimes = NaN(nPositivesDetector, 1);
+confidenceScores = NaN(nPositivesDetector, 1);
+resultsFileNames = cell(nPositivesDetector, 1);
+resultsFileDurations = NaN(nPositivesDetector, 1);
+originalIndicesInValidResults = (1:nPositivesDetector)'; % Maps back to 'validResults' (which is resultsData.results)
 
 % Diagnostic counters
 diag_missingEventStartTimeField = 0;
@@ -81,7 +81,7 @@ diag_nonNumericOrNonScalarConfidence = 0;
 % Init output struct
 metrics = struct();
 
-for i = 1:numResultsDetections
+for i = 1:nPositivesDetector
     currentEntry = inferenceResults(i);
 
     % Process eventStartTime
@@ -167,7 +167,7 @@ end
 
 % Remove entries with NaN time or NaN confidence score
 validDataIdx = ~isnan(resultsTimes) & ~isnan(confidenceScores);
-numResultsOriginal_beforeNaNFilter = numResultsDetections; 
+numResultsOriginal_beforeNaNFilter = nPositivesDetector; 
 numRemoved_NoScoreOrTime = sum(~validDataIdx);
 
 if numRemoved_NoScoreOrTime > 0
@@ -181,11 +181,11 @@ resultsFileNames = resultsFileNames(validDataIdx);
 resultsFileDurations = resultsFileDurations(validDataIdx);
 filteredOriginalIndicesInValidResults = originalIndicesInValidResults(validDataIdx);
 
-numResultsDetections_Evaluated = length(resultsTimes);
+nPositivesDetector_Evaluated = length(resultsTimes);
 
 fprintf('Total results entries initially loaded: %d\n', length(resultsData.results));
-fprintf('Results entries considered (numResultsDetections metric source): %d\n', numResultsOriginal_beforeNaNFilter);
-fprintf('Results entries after time/score validation (evaluatedResultCount metric): %d\n', numResultsDetections_Evaluated);
+fprintf('Results entries considered (nPositivesDetector metric source): %d\n', numResultsOriginal_beforeNaNFilter);
+fprintf('Results entries after time/score validation (evaluatedResultCount metric): %d\n', nPositivesDetector_Evaluated);
 
 %% Extract detections from groundtruth (format-specific)
 
@@ -314,17 +314,17 @@ elseif strcmp(gtFormat, 'CTBTO')
     gtFs = gtFs(:);
 end
 
-numGroundtruthDetections = length(gtTimes);
+nPositivesGT = length(gtTimes);
 fprintf('Number of ground truth detections: %d (from %s)\n', ...
-    numGroundtruthDetections, gtSourceDescription);
+    nPositivesGT, gtSourceDescription);
 
-if numResultsDetections_Evaluated == 0 && numGroundtruthDetections == 0
+if nPositivesDetector_Evaluated == 0 && nPositivesGT == 0
     warning('Both evaluated results and ground truth have zero detections. Metrics will be NaN/empty.');
-    metrics.numResultsDetections = numResultsOriginal_beforeNaNFilter;
-    metrics.numGroundtruthDetections = 0;
-    metrics.numTruePositives = 0;
-    metrics.numFalsePositives = 0;
-    metrics.numFalseNegatives = 0;
+    metrics.nPositivesGT = 0;
+    metrics.nPositivesDetector = numResultsOriginal_beforeNaNFilter;
+    metrics.nTruePositives = 0;
+    metrics.nFalsePositives = 0;
+    metrics.nFalseNegatives = 0;
     metrics.recall = NaN;
     metrics.sensitivity = NaN;
     metrics.precision = NaN;
@@ -355,11 +355,11 @@ end
 fprintf('Matching results to ground truth using Optimal Assignment (Hungarian/matchpairs) with %.2f s tolerance...\n', ...
     detectionTolerance);
 toleranceInDays = detectionTolerance / (24 * 60 * 60);
-numTruePositives = 0;
+nTruePositives = 0;
 
-if numResultsDetections_Evaluated > 0 && numGroundtruthDetections > 0
-    costMatrix = Inf(numResultsDetections_Evaluated, numGroundtruthDetections);
-    for i = 1:numResultsDetections_Evaluated
+if nPositivesDetector_Evaluated > 0 && nPositivesGT > 0
+    costMatrix = Inf(nPositivesDetector_Evaluated, nPositivesGT);
+    for i = 1:nPositivesDetector_Evaluated
         timeDiffs = abs(resultsTimes(i) - gtTimes);
         validGtIndicesForMatch = find(timeDiffs <= toleranceInDays);
         if ~isempty(validGtIndicesForMatch)
@@ -370,50 +370,50 @@ if numResultsDetections_Evaluated > 0 && numGroundtruthDetections > 0
     [matches, ~, ~] = matchpairs(costMatrix, costOfNonAssignment);
     
     if ~isempty(matches)
-        numTruePositives = size(matches, 1); 
+        nTruePositives = size(matches, 1); 
         matchedResultIndices = matches(:, 1); 
         matchedGtIndices = matches(:, 2);   
     else
-        numTruePositives = 0;
+        nTruePositives = 0;
         matchedResultIndices = [];
         matchedGtIndices = [];
     end
-    fprintf('Optimal assignment found %d matches (True Positives).\n', numTruePositives);
+    fprintf('Optimal assignment found %d matches (True Positives).\n', nTruePositives);
 else
     fprintf('Skipping matching: Zero evaluated results or zero ground truth detections.\n');
     matchedResultIndices = []; 
     matchedGtIndices = [];   
 end
-resultLabels = zeros(numResultsDetections_Evaluated, 1); 
+resultLabels = zeros(nPositivesDetector_Evaluated, 1); 
 
 if ~isempty(matchedResultIndices) 
     resultLabels(matchedResultIndices) = 1; 
 end
-numFalsePositives = numResultsDetections_Evaluated - numTruePositives;
-numFalseNegatives = numGroundtruthDetections - numTruePositives;
+nFalsePositives = nPositivesDetector_Evaluated - nTruePositives;
+nFalseNegatives = nPositivesGT - nTruePositives;
 
 fprintf('\nPerformance Metrics (Optimal Matching)\n');
-fprintf('Total Ground Truth Detections: %d\n', numGroundtruthDetections);
+fprintf('Total Ground Truth Detections: %d\n', nPositivesGT);
 fprintf('Total Result Entries Considered: %d\n', numResultsOriginal_beforeNaNFilter);
-fprintf('Result Detections Evaluated (with valid score/time): %d\n', numResultsDetections_Evaluated);
-fprintf('True Positives (TP):  %d\n', numTruePositives);
-fprintf('False Positives (FP): %d\n', numFalsePositives);
-fprintf('False Negatives (FN): %d\n', numFalseNegatives);
+fprintf('Result Detections Evaluated (with valid score/time): %d\n', nPositivesDetector_Evaluated);
+fprintf('True Positives (TP):  %d\n', nTruePositives);
+fprintf('False Positives (FP): %d\n', nFalsePositives);
+fprintf('False Negatives (FN): %d\n', nFalseNegatives);
 fprintf('---------------------------\n');
 
-if numGroundtruthDetections > 0 
-    recall = numTruePositives / numGroundtruthDetections;
+if nPositivesGT > 0 
+    recall = nTruePositives / nPositivesGT;
 else
     recall = NaN; 
-    if numTruePositives == 0, fprintf('Recall is NaN (no ground truth).\n'); end
+    if nTruePositives == 0, fprintf('Recall is NaN (no ground truth).\n'); end
 end
 sensitivity = recall;
 
-if numResultsDetections_Evaluated > 0 
-    precision = numTruePositives / numResultsDetections_Evaluated;
+if nPositivesDetector_Evaluated > 0 
+    precision = nTruePositives / nPositivesDetector_Evaluated;
 else
     precision = NaN;
-    if numTruePositives == 0, fprintf('Precision is NaN (no evaluated results).\n'); end
+    if nTruePositives == 0, fprintf('Precision is NaN (no evaluated results).\n'); end
 end
 
 if (precision + recall) > 0 && ~isnan(precision) && ~isnan(recall)
@@ -431,7 +431,7 @@ fprintf('---------------------------\n');
 
 fprintf('Creating false positives structure...\n');
 
-if numFalsePositives > 0
+if nFalsePositives > 0
     fpResultIndices_in_evaluated_list = find(resultLabels == 0); 
     fpCount = length(fpResultIndices_in_evaluated_list);
 
@@ -488,13 +488,13 @@ if numFalsePositives > 0
     fprintf('Created false positives struct array with %d entries.\n', fpCount);
 else
     falsePositives = struct('DetectionStartTime', {}, 'DetectionEndTime', {}, 'DetectionStartSamp', [], 'DetectionEndSamp', [], 'AudioFilename', {}, 'AudioFs', [], 'Confidence', [], 'probabilities', []);
-    fprintf('No false positives found (numFalsePositives calculated as %d).\n', numFalsePositives);
+    fprintf('No false positives found (nFalsePositives calculated as %d).\n', nFalsePositives);
 end
 
 %% Create False Negatives Structure
 fprintf('Creating false negatives structure...\n');
-if numFalseNegatives > 0
-    allGtIndices = 1:numGroundtruthDetections;
+if nFalseNegatives > 0
+    allGtIndices = 1:nPositivesGT;
     fnGtIndices = setdiff(allGtIndices, matchedGtIndices); 
     fnCount = length(fnGtIndices);
 
@@ -593,13 +593,13 @@ end
 fprintf('\nCalculating ROC curve and AUC...\n');
 X_roc = NaN; Y_tpr = NaN; T_thresholds_roc = NaN; AUC = NaN;
 
-if numResultsDetections_Evaluated > 0 && numGroundtruthDetections > 0 && ~isempty(confidenceScores) && ~isempty(resultLabels)
+if nPositivesDetector_Evaluated > 0 && nPositivesGT > 0 && ~isempty(confidenceScores) && ~isempty(resultLabels)
     uniqueLabels = unique(resultLabels);
     if length(uniqueLabels) == 2 
         [X_roc, Y_tpr, T_thresholds_roc, AUC] = perfcurve(resultLabels, confidenceScores, 1, 'XCrit', 'fpr', 'YCrit', 'tpr');
         fprintf('AUC calculated: %.4f\n', AUC);
     elseif all(uniqueLabels == 1) && ~isempty(uniqueLabels)
-        warning('All %d evaluated results were TPs. ROC is degenerate (0,1). AUC = 1.0.', numResultsDetections_Evaluated);
+        warning('All %d evaluated results were TPs. ROC is degenerate (0,1). AUC = 1.0.', nPositivesDetector_Evaluated);
         AUC = 1.0; X_roc = [0; 0]; Y_tpr = [0; 1]; 
         if ~isempty(confidenceScores)
             T_thresholds_roc = [max(confidenceScores)+eps(max(confidenceScores)); min(confidenceScores)-eps(min(confidenceScores))];
@@ -607,7 +607,7 @@ if numResultsDetections_Evaluated > 0 && numGroundtruthDetections > 0 && ~isempt
             T_thresholds_roc = [1;0]; 
         end
     elseif all(uniqueLabels == 0) && ~isempty(uniqueLabels)
-        warning('All %d evaluated results were FPs. ROC is degenerate (1,0). AUC = 0.0.', numResultsDetections_Evaluated);
+        warning('All %d evaluated results were FPs. ROC is degenerate (1,0). AUC = 0.0.', nPositivesDetector_Evaluated);
         AUC = 0.0; X_roc = [0; 1]; Y_tpr = [0; 0]; 
         if ~isempty(confidenceScores)
             T_thresholds_roc = [max(confidenceScores)+eps(max(confidenceScores)); min(confidenceScores)-eps(min(confidenceScores))];
@@ -617,16 +617,16 @@ if numResultsDetections_Evaluated > 0 && numGroundtruthDetections > 0 && ~isempt
     else
         warning('Cannot calculate ROC: Not enough diversity in labels or data. Labels: %s', mat2str(uniqueLabels));
     end
-elseif numResultsDetections_Evaluated == 0
+elseif nPositivesDetector_Evaluated == 0
     warning('Cannot calculate ROC: No evaluated results detections with scores.');
-elseif numGroundtruthDetections == 0
+elseif nPositivesGT == 0
     warning('Cannot calculate ROC: No ground truth detections. AUC is undefined.');
 end
 
 %% Apply Temperature Scaling Calibration
 fprintf('\nApplying temperature scaling calibration...\n');
 
-if numResultsDetections_Evaluated > 0 && any(resultLabels == 1) && any(resultLabels == 0)
+if nPositivesDetector_Evaluated > 0 && any(resultLabels == 1) && any(resultLabels == 0)
 
     % Apply temperature scaling calibration
     [optimalTemperature, calibratedConfidences] = calculateOptimalTemperature(confidenceScores, resultLabels);
@@ -687,7 +687,7 @@ if totalAudioDuration <= 0 && strcmp(gtFormat, 'CTBTO') && exist('groundtruthDat
 end
 
 perf_falseAlarmRates = NaN; perf_detectionRates = NaN; T_thresholds_perf = NaN;
-if totalAudioDuration > 0 && numGroundtruthDetections > 0 && numResultsDetections_Evaluated > 0 && ~isempty(confidenceScores) && ~isempty(resultLabels)
+if totalAudioDuration > 0 && nPositivesGT > 0 && nPositivesDetector_Evaluated > 0 && ~isempty(confidenceScores) && ~isempty(resultLabels)
     
     if length(unique(resultLabels)) < 1 
         warning('Not enough valid score/label pairs for performance curve calculation.');
@@ -710,8 +710,8 @@ if totalAudioDuration > 0 && numGroundtruthDetections > 0 && numResultsDetection
                 tpAtThreshold = sum(resultLabels(aboveThresholdIdx) == 1);
                 fpAtThreshold = sum(resultLabels(aboveThresholdIdx) == 0);
 
-                if numGroundtruthDetections > 0
-                    perf_detectionRates(i) = tpAtThreshold / numGroundtruthDetections;
+                if nPositivesGT > 0
+                    perf_detectionRates(i) = tpAtThreshold / nPositivesGT;
                 else
                     perf_detectionRates(i) = NaN;
                 end
@@ -737,11 +737,11 @@ end
 
 %% Prepare output metrics structure
 
-metrics.numResultsDetections = numResultsOriginal_beforeNaNFilter; 
-metrics.numGroundtruthDetections = numGroundtruthDetections;
-metrics.numTruePositives = numTruePositives;
-metrics.numFalsePositives = numFalsePositives;
-metrics.numFalseNegatives = numFalseNegatives;
+metrics.nPositivesGT = nPositivesGT;
+metrics.nPositivesDetector = numResultsOriginal_beforeNaNFilter; 
+metrics.nTruePositives = nTruePositives;
+metrics.nFalsePositives = nFalsePositives;
+metrics.nFalseNegatives = nFalseNegatives;
 metrics.recall = recall;
 metrics.sensitivity = sensitivity;
 metrics.precision = precision;
@@ -751,12 +751,12 @@ metrics.roc = struct('fpr', X_roc, 'tpr', Y_tpr, 'thresholds', T_thresholds_roc)
 metrics.performanceCurve = struct('faps', perf_falseAlarmRates, 'tpr', perf_detectionRates, 'thresholds', T_thresholds_perf);
 metrics.totalAudioDuration_sec = totalAudioDuration;
 metrics.detectionTolerance_sec = detectionTolerance;
-metrics.evaluatedResultCount = numResultsDetections_Evaluated; 
+metrics.evaluatedResultCount = nPositivesDetector_Evaluated; 
 metrics.numResultsExcluded_NoScoreOrTime = numRemoved_NoScoreOrTime; 
 metrics.groundtruthSource = gtSourceDescription;
 metrics.numResultsExcluded_InferenceFailures = 0; % Always 0 now
-metrics.confidenceDistribition.confPercentiles = confPercentiles;
-metrics.confidenceDistribition.percentiles = percentiles;
+metrics.confidenceDistribution.confPercentiles = confPercentiles;
+metrics.confidenceDistribution.percentiles = percentiles;
 metrics.matchingAlgorithm = 'Hungarian (matchpairs)';
 
 end

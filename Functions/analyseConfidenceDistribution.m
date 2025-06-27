@@ -12,10 +12,10 @@ confidenceScores = [inferenceResults.confidence];
 
 % Plot confidence distributions for TP, FP, FN
 figure;
-histogram(confidenceScores, 'Normalization', 'probability');
-title('Distribution of Confidence Scores for Post-Processed Detections');
+histogram(confidenceScores, 'Normalization', 'percentage');
 xlabel('Confidence Score');
-ylabel('Probability');
+ylabel('Percentage of Detections');
+title('Distribution of Confidence Scores for Post-Processed Detections');
 
 % Calculate percentiles
 percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99];

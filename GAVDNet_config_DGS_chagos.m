@@ -24,15 +24,13 @@ noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised";
 noise_library_path = "D:\DGS_noise_library";
 
 % Output path for trained model and intermediate training files:
-gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models";
+gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
 
 % Folder containing audio files to run the detector on:
-% inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small"; % For parameter tuning
-inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset"; % For final test
+inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset";
 
 % Results path for inference
-% inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Postproc Parameter Tuning - 2007subset_small"; % For parameter tuning
-inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset"; % For final test
+inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
 
 %% Target Call Characteristics
 
@@ -40,7 +38,7 @@ inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subse
 initial_freq = 32.97;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2017;    % The year of the initial_freq measurement
 pitch_shift_rate = 0.33;     % Annual frequency shift rate (Hz/year)
-pitch_shift_tol = 0.01;       % Additional tolerance for pitch shifting (Hz)
+pitch_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
 detect_year_range = [2006, 2008]; % Time period represented by the synthetic dataset
 
 %% Input Audio Cleanup Parameters
@@ -58,15 +56,14 @@ postAugfades = 0.2;           % Fade duration after augmentation (seconds)
 %% Data Augmentation Parameters
 
 % Parameters for augmenting clean samples
-snrRange = [-6, 10];                    % Range of randomly set Signal to noise ratios in training sequences (dB)
 c = 1500;                               % Typical sound propagation velocity (m/s)
 speedup_factor_range = [0.97, 1.03];    % Time stretching factor range
 lpf_cutoff_range = [37, 50];            % Low-pass filter cutoff range (Hz)
-hpf_cutoff_range = [10, 34];            % Low-pass filter cutoff range (Hz)
+hpf_cutoff_range = [10, 33];            % Low-pass filter cutoff range (Hz)
 source_velocity_range = [1, 30];        % Source velocity range for Doppler (m/s)
 distortionRange = [0.1, 0.5];           % Nonlinear distortion magnitude range
-decayTimeRange = [0.1, 5];              % Reverberation decay time range (s)
-trans_loss_strength_range = [0.1, 0.5]; % Transmission loss magnitude range
+decayTimeRange = [0.1, 10];              % Reverberation decay time range (s)
+trans_loss_strength_range = [0.1, 0.75]; % Transmission loss magnitude range
 trans_loss_density_range = [0.1, 0.5];  % Transmission loss event density range
 end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to 
 %                                       randomly remove from the end of
@@ -75,9 +72,10 @@ end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-numSequences = 1200;    % Number of sequences to generate
-sequenceDuration = 1800;% Duration of training sequences to build (seconds)
-minCallSeparation = 0.5;  % Minimum separation between consecutive calls in a sequence (seconds)
+snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+numSequences = 1200;        % Number of sequences to generate
+sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
+minCallSeparation = 0.5;    % Minimum separation between consecutive calls in a sequence (seconds)
 
 % NOTE: The number of calls per sequence is calculated automatically to 
 % ensure that approximately 50% of every sequence's duration contains the 
@@ -138,11 +136,12 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.001;% Activation Threshold. Sets the probability 
+
+postProcOptions.AT = 0.5;   % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.0007;% Deactivation Threshold. Sets the probability 
+postProcOptions.DT = 0.001;% Deactivation Threshold. Sets the probability 
 %                           threshold for ending a vocalisation segment. 
 %                           Specify as a scalar in the range [0,1].
 
@@ -151,11 +150,11 @@ postProcOptions.AEAVD = 0;  % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the 
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.01;   % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.1;  % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less. 
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.3; % The length threshold is set based on 
+postProcOptions.LT_scaler = 0.5; % The length threshold is set based on 
 %                           the mean duration of the calls in the training
 %                           set, multiplied by this number. Any detection 
 %                           peak shorter than the length threshold is 
