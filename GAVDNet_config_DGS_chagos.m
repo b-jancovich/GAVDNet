@@ -14,9 +14,12 @@
 
 % Path to high-quality, low-noise exemplar recording(s) of target call to
 % be used as the source data to construct the synthetic training sequences.
-% Each file name must contain a string indicating the year it was 
-% recorded, in the format "-2016_":
-noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised";
+% May be a file path or a folder path. If folder, all wav files in folder
+% will be used. Each file name must contain a string indicating the year it 
+% was recorded, in the format "-2016_". This is used to calculate correct 
+% annual pitch shift based on known pitch decline rate for the target call.
+% noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised";
+noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised\detectionAudio_21560_19-Aug-2005_19_35_36_24.295708_RXDENOISED.wav";
 
 % Path to folder containing background noise samples (target call absent):
 % NOTE: noise library audio must have sample rate => sample rate of 
@@ -24,13 +27,13 @@ noiseless_sample_path = "D:\DGS_Chagos_Exemplars\U1 & U2\Denoised";
 noise_library_path = "D:\DGS_noise_library";
 
 % Output path for trained model and intermediate training files:
-gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
+gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
 
 % Folder containing audio files to run the detector on:
 inferenceAudioPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset";
 
 % Results path for inference
-inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
+inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar";
 
 %% Target Call Characteristics
 
@@ -46,7 +49,7 @@ detect_year_range = [2006, 2008]; % Time period represented by the synthetic dat
 % Pre-augmentation "noiseless_samples" processing
 preAugfadeIn = 0.2;          % Duration of fade-in (seconds)
 preAugfadeOut = 0.2;         % Duration of fade-out (seconds)
-target_dynamic_range = 2;  % Target dynamic range (dB)
+target_dynamic_range = 2;    % Target dynamic range (dB)
 
 % Post-augmentation "cleanSignals" processing 
 trim_threshold_ratio = 0.2;   % Ratio threshold for silence detection 
@@ -72,7 +75,7 @@ end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+snrRange = [-3, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
 numSequences = 1200;        % Number of sequences to generate
 sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
 minCallSeparation = 0.5;    % Minimum separation between consecutive calls in a sequence (seconds)
@@ -135,7 +138,6 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 %                               feature framing modes, but not in 'none'.
 
 %% Inference Post-Processing Parameters
-
 
 postProcOptions.AT = 0.5;   % Activation Threshold. Sets the probability 
 %                           threshold for starting a vocalisation segment. 

@@ -48,7 +48,7 @@
 %
 %% Init
 
-clear
+clear       
 close all
 clc
 clear persistent
@@ -56,8 +56,8 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -143,13 +143,26 @@ fprintf('\n')
 %% Load the noiseless sample(s)
 
 % Get list of noiseless samples
-noiseless_samples = dir(fullfile(noiseless_sample_path, '*.wav'));
-n_noiseless_samples = length(noiseless_samples);
-if buildCleanSignals == true
-    for i = 1:n_noiseless_samples
+if isfolder(noiseless_sample_path)
+    noiseless_samples = dir(fullfile(noiseless_sample_path, '*.wav'));
+    n_noiseless_samples = length(noiseless_samples);
+    if buildCleanSignals == true
+        for i = 1:n_noiseless_samples
+            % Load the noiseless detection from which to build the test dataset.
+            [noiseless_samples(i).audio, noiseless_samples(i).Fs] = audioread(...
+                fullfile(noiseless_samples(i).folder, noiseless_samples(i).name));
+        end
+    end
+elseif isfile(noiseless_sample_path)
+    n_noiseless_samples = 1;
+    noiseless_samples = struct();
+    if buildCleanSignals == true
+        [noiseless_samples.folder, noiseless_samples.name, ext] = fileparts(...
+            noiseless_sample_path);
+        noiseless_samples.name = strcat(noiseless_samples.name, ext);
         % Load the noiseless detection from which to build the test dataset.
-        [noiseless_samples(i).audio, noiseless_samples(i).Fs] = audioread(...
-            fullfile(noiseless_samples(i).folder, noiseless_samples(i).name));
+        [noiseless_samples.audio, noiseless_samples.Fs] = audioread(...
+            noiseless_sample_path);
     end
 end
 
@@ -248,13 +261,14 @@ n_augmented_copies_per_noiseless_sample = 10^2 * ceil(ceil(totalCleanSignalsNeed
 % Number of years of data in noise library
 year_list = detect_year_range(1):1:detect_year_range(2);
 
+% The regexp pattern for the year in the filename:
+pattern = '.*-(\d{4})_.*';
 for i = 1:n_noiseless_samples
     % Extract the year from a filename using regular expression
     noiselessSampleFileName = noiseless_samples(i).name;
-    pattern = '.*-(\d{4})_.*';
     matches = regexp(noiselessSampleFileName, pattern, 'tokens');
     noiseless_samples(i).sample_year = str2double(matches{1}{1});
-    noiseless_samples(i).CFreq = initial_freq + ((noiseless_samples(i).sample_year...
+    noiseless_samples(i).CFreq = initial_freq - ((noiseless_samples(i).sample_year...
         - initial_freq_year) * pitch_shift_rate);
 
     % Calculate Max range of freq shift for each noiseless sample
@@ -467,7 +481,7 @@ if buildXandT == true
 
         % Buffer training features into frames
         XValBuffered = featureBuffer(XVal, frameLength, ...
-            frameOverlapPercent);
+            frameOverlapPercent, "standardizeFrames", 'true');
 
         % Buffer training masks into frames
         TValBuffered = featureBuffer(TVal, frameLength, ...
