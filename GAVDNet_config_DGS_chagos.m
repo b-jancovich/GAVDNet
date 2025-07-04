@@ -40,8 +40,8 @@ inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subse
 % Frequency parameters for the target call
 initial_freq = 32.97;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2017;    % The year of the initial_freq measurement
-pitch_shift_rate = 0.33;     % Annual frequency shift rate (Hz/year)
-pitch_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
+freq_shift_rate = 0.33;     % Annual frequency shift rate (Hz/year)
+freq_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
 detect_year_range = [2006, 2008]; % Time period represented by the synthetic dataset
 
 %% Input Audio Cleanup Parameters
@@ -75,7 +75,7 @@ end_trim_duration_range = [0.1, 10];    % Maximum duration of signal to
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-snrRange = [-3, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
 numSequences = 1200;        % Number of sequences to generate
 sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
 minCallSeparation = 0.5;    % Minimum separation between consecutive calls in a sequence (seconds)
@@ -100,8 +100,8 @@ frameOverlapPercent = 50;  % Overlap of each frame (percent of frameDuration)
 % Training hyperparameters
 trainPercentage = 85;        % Percentage of data used for training vs. validation
 miniBatchSize = 12;          % Number of training samples per iteration
-maxEpochs = 9;               % Maximum number of training epochs
-valPatience = 8;             % Validation patience (n validation tests)
+maxEpochs = 7;               % Maximum number of training epochs
+valPatience = 7;             % Validation patience (n validation tests)
 lrInitial = 0.005;           % Initial learning rate
 lrDropPeriod = 2;            % Period for learning rate drop (epochs)
 lrDropFac = 0.5;             % Learning rate drop factor
