@@ -1,5 +1,5 @@
 <deployment-project plugin="plugin.ezdeploy" plugin-version="1.0">
-  <configuration build-checksum="520952952" file="C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator.prj" location="C:\Users\z5439673\Git\GAVDNet" name="GAVDNetAdjudicator" preferred-package-location="C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\for_redistribution" preferred-package-type="package.type.exe" target="target.ezdeploy.standalone" target-name="Application Compiler">
+  <configuration build-checksum="520952952" file="C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\GAVDNetAdjudicator.prj" location="C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator" name="GAVDNetAdjudicator" preferred-package-location="C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\for_redistribution" preferred-package-type="package.type.exe" target="target.ezdeploy.standalone" target-name="Application Compiler">
     <param.appname>GAVDNetAdjudicator</param.appname>
     <param.icon />
     <param.icons />
@@ -30,7 +30,7 @@ It is designed to allow an adjudicator to review each disagreement case and reco
     <param.package.mcr>true</param.package.mcr>
     <param.no.mcr>false</param.no.mcr>
     <param.web.mcr.name>MyAppInstaller_web</param.web.mcr.name>
-    <param.package.mcr.name>MyAppInstaller_mcr</param.package.mcr.name>
+    <param.package.mcr.name>AdjudicatorInstaller_mcr</param.package.mcr.name>
     <param.no.mcr.name>MyAppInstaller_app</param.no.mcr.name>
     <param.windows.command.prompt>true</param.windows.command.prompt>
     <param.create.log>false</param.create.log>
@@ -66,7 +66,6 @@ It is designed to allow an adjudicator to review each disagreement case and reco
       <param.support.packages />
       <param.no.mcr />
       <param.web.mcr.name />
-      <param.package.mcr.name />
       <param.no.mcr.name />
       <param.windows.command.prompt />
       <param.create.log />
@@ -82,9 +81,9 @@ It is designed to allow an adjudicator to review each disagreement case and reco
     <fileset.package />
     <fileset.depfun />
     <build-deliverables>
-      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="splash.png" optional="false">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\for_testing\splash.png</file>
-      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="GAVDNetAdjudicator.exe" optional="false">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\for_testing\GAVDNetAdjudicator.exe</file>
-      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="readme.txt" optional="true">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\for_testing\readme.txt</file>
+      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="splash.png" optional="false">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\GAVDNetAdjudicator\for_testing\splash.png</file>
+      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="readme.txt" optional="true">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\GAVDNetAdjudicator\for_testing\readme.txt</file>
+      <file location="${PROJECT_ROOT}\GAVDNetAdjudicator\for_testing" name="GAVDNetAdjudicator.exe" optional="false">C:\Users\z5439673\Git\GAVDNet\GAVDNetAdjudicator\GAVDNetAdjudicator\for_testing\GAVDNetAdjudicator.exe</file>
     </build-deliverables>
     <workflow />
     <matlab>
