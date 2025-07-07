@@ -6,7 +6,7 @@
 % Model inference runs on audio files in a loop, then saves raw results to
 % disk (raw results = probabilities for target call presence per STFT time 
 % bin). The post processing procedure that converts these raw probabilities
-% into discrete detection boundaries is run in a second loop after
+% into discrete detection boundaries is run in a second loop after 
 % reloading the raw data. The script is built this way so that post
 % processing parameters can be iteratively fine tuned without having to run
 % all the audio through the model again, which is computationally
@@ -29,30 +29,28 @@ clear persistent
 plotting = false;
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 
-% Different output paths for each version of the Z-Call detector:
-many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
-many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
-many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
-many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
+% Different output paths for each version of the detector we are testing:
+% many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
+% many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+% many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
+% many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
+many_gavdNetDataPaths{1} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
+many_gavdNetDataPaths{2} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10";
+many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
+many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
 
-% many_gavdNetDataPaths{1} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
-% many_gavdNetDataPaths{2} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10";
-% many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
-% many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
-
-% Results path for inference
-many_inferenceOutputPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar";
-many_inferenceOutputPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10";
-many_inferenceOutputPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-6 to 10";
-many_inferenceOutputPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-3 to 10";
-
-% many_inferenceOutputPaths{1} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar";
-% many_inferenceOutputPaths{2} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10";
-% many_inferenceOutputPaths{3} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
-% many_inferenceOutputPaths{4} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-3 to 10";
+% Output paths for the results from each version of the detector:
+% many_inferenceOutputPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar";
+% many_inferenceOutputPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10";
+% many_inferenceOutputPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-6 to 10";
+% many_inferenceOutputPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-3 to 10";
+many_inferenceOutputPaths{1} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar";
+many_inferenceOutputPaths{2} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10";
+many_inferenceOutputPaths{3} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
+many_inferenceOutputPaths{4} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-3 to 10";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -267,4 +265,9 @@ for modelNumber = 1:nModels
     
     fprintf('Saved %g post processed detections to %s\n', length(results), inferenceOutputPath)
     diary off
+
+    clearvars -except plotting configPath many_gavdNetDataPaths many_inferenceOutputPaths modelNumber nModels
+    clear gavdNetPreprocess
+    clear persistent
+
 end

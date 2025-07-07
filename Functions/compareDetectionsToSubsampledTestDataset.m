@@ -728,8 +728,11 @@ fprintf('Total Audio Duration for FAPS: %.2f seconds (%.2f hours)\n', ...
 
 %% Analyse Confidence Score Distribution
 
+% Plot confidence distribution
 [confPercentiles, percentiles] = analyseConfidenceDistribution( ...
-    resultsData.results);
+    resultsData.results, false);
+
+% Print confidence distribution percentiles
 fprintf('\nConfidence Percentiles:\n');
 for i = 1:length(percentiles)
     fprintf('%d%%: %.6f\n', percentiles(i), confPercentiles(i));

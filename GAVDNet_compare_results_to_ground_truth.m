@@ -49,24 +49,39 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Path to detector results file (postprocessed):
-% inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Postproc Parameter Tuning - 2007subset_small\detector_results_postprocessed.mat";
-inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\detector_results_postprocessed.mat";
-% inferenceResultsPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Postproc Parameter Tuning - Casey Subset Small\detector_results_postprocessed.mat";
-% inferenceResultsPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\detector_results_postprocessed.mat";
+% many_inferenceResultsPaths{1} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar\detector_results_postprocessed.mat";
+% many_inferenceResultsPaths{2} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10\detector_results_postprocessed.mat";
+% many_inferenceResultsPaths{3} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10\detector_results_postprocessed.mat";
+% many_inferenceResultsPaths{4} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-3 to 10\detector_results_postprocessed.mat";
+
+many_inferenceResultsPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar\detector_results_postprocessed.mat";
+many_inferenceResultsPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10\detector_results_postprocessed.mat";
+many_inferenceResultsPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-6 to 10\detector_results_postprocessed.mat";
+many_inferenceResultsPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-3 to 10\detector_results_postprocessed.mat";
+
+% Different output paths for each version of the detector we are testing:
+% many_gavdNetDataPaths{1} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
+% many_gavdNetDataPaths{2} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10";
+% many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
+% many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
+
+many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
+many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
+many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
 
 % Path to "groundtruth" file containing date and time stamps of the true 
 % detections of the target call in the test audio files:
-% groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset_small\test_dataset_detection_list.mat"; 
-groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
-% groundtruthPath = "D:\GAVDNet\BmAntZ_SORP\Test Data\TestSubset\Casey2014.Bm.Ant-Z.selections_SUBSET.txt";
-% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
+% groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
+groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 
 % Test dataset source
-gtFormat = 'CTBTO'; % Either "CTBTO" or "SORP"
+gtFormat = 'SORP'; % Either "CTBTO" or "SORP" 
+% CTBTO for Chagos, SORP for Z-call
 
 % True known call duration (for isolating audio for missed detections)
 maxDetectionDuration = 40; % (seconds)
@@ -76,86 +91,97 @@ maxDetectionDuration = 40; % (seconds)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% NO MORE USER TUNABLE PARAMETERS. DO NOT MODIFY THE CODE BELOW THIS POINT.
+
+
+for modelNum = 1:length(many_inferenceResultsPaths)
+
 %% Set Paths and Load Input Variables
 
-% Add dependencies to path
-run(configPath) % Load config file
-projectRoot = pwd;
-[gitRoot, ~, ~] = fileparts(projectRoot);
-addpath(fullfile(projectRoot, "Functions"))
+    % Add dependencies to path
+    run(configPath) % Load config file
+    projectRoot = pwd;
+    [gitRoot, ~, ~] = fileparts(projectRoot);
+    addpath(fullfile(projectRoot, "Functions"))
 
-% Set output path
-[gtCompareResultsPath, ~, ~] = fileparts(inferenceResultsPath);
-gtCompareResultsPath = fullfile(gtCompareResultsPath, "groundtruthComparisonResults.xlsx");
+    inferenceResultsPath = many_inferenceResultsPaths{modelNum};
+    gavdNetDataPath = many_gavdNetDataPaths{modelNum};
 
-%% Load model
+    % Set output path
+    [gtCompareResultsPath, ~, ~] = fileparts(inferenceResultsPath);
+    gtCompareResultsPath = fullfile(gtCompareResultsPath, "groundtruthComparisonResults.xlsx");
+    
+    %% Load model
+    
+    % Handle multiple model files with a UI dialog:
+    modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
+    if isscalar(modelList)
+        load(fullfile(modelList.folder, modelList.name))
+        fprintf('Loading model: %s\n', modelList.name)
+        [~, modelName, ~] = fileparts(fullfile(modelList.folder, modelList.name));
+    
+    else
+        [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
+        load(fullfile(location, file))
+        [~, modelName, ~] = fileparts(fullfile(location, file));
+    end
+    
+    % Re-load the postprocessor parameters used at inference:
+    load(inferenceResultsPath, "postProcOptions")
+    
+    % Reload the feature framing mode used at inference:
+    load(inferenceResultsPath, "featureFraming");
+    
+    %% Compare Detector Output to Groundtruth
+    
+    % Run groundtruth comparison
+    [metrics, FP, FN] = compareDetectionsToSubsampledTestDataset(...
+        groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration, gtFormat);
+    
+    %% Save Results
+    
+    % Compile results and test params
+    testCompleteTime = string(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
+    [~, dataSetName, ~] = fileparts(fileparts(groundtruthPath));
+    
+    confDist = metrics.confidenceDistribution;
+    confPercentile1 = confDist.confPercentiles(1);
+    confPercentile50 = confDist.confPercentiles(5);
+    confPercentile99 = confDist.confPercentiles(9);
+    
+    outTable = struct2table(metrics);
+    outTable = removevars(outTable, {'temperatureScaling', 'roc', 'performanceCurve', ...
+        'evaluatedResultCount', 'numResultsExcluded_NoScoreOrTime',...
+        'groundtruthSource', 'numResultsExcluded_InferenceFailures',...
+        'matchingAlgorithm', 'totalAudioDuration_sec', 'confidenceDistribution',...
+        'detectionTolerance_sec', 'sensitivity'});
+    newNames = {'1stPrctileConf', '50thPrctileConf', '99thPrctileConf', ...
+        'ActivationThreshold', 'DeactivationThreshold', 'AEAVD', ...
+        'MergeThreshold', 'LengthThresholdScaler', 'LengthThreshold', ...
+        'TestTimeStamp', 'ModelName', 'TestDataset', 'SequenceSNRRange',...
+        'FeatureFramingMode', 'FrameStandardization'};
+    outTable = addvars(outTable, confPercentile1, confPercentile50, ...
+        confPercentile99, postProcOptions.AT, postProcOptions.DT, ...
+        postProcOptions.AEAVD, postProcOptions.MT, postProcOptions.LT_scaler, ...
+        postProcOptions.LT, testCompleteTime, string(modelName), dataSetName,...
+        model.dataSynthesisParams.snrRange,...
+        string(featureFraming), string(frameStandardization), 'NewVariableNames', newNames);
+    
+    % Write output to CSV
+    if exist(gtCompareResultsPath, 'file') == 2
+        % Append data without headers
+        writetable(outTable, gtCompareResultsPath, 'WriteMode', 'append', 'WriteVariableNames', false);
+    else
+        % File does not exist — write with headers
+        writetable(outTable, gtCompareResultsPath);
+    end
+    
+    % Save disagreements
+    disagreements = struct('falsePositives', FP, 'falseNegatives', FN);
+    [resultsFolder, ~, ~] = fileparts(gtCompareResultsPath);
+    saveNamePath = fullfile(resultsFolder,...
+        strcat('detector_vs_GT_disagreements_', testCompleteTime, '.mat'));
+    save(saveNamePath, 'disagreements', '-v7.3')
 
-% Handle multiple model files with a UI dialog:
-modelList = dir(fullfile(gavdNetDataPath, 'GAVDNet_trained_*'));
-if isscalar(modelList)
-    load(fullfile(modelList.folder, modelList.name))
-    fprintf('Loading model: %s\n', modelList.name)
-    [~, modelName, ~] = fileparts(fullfile(modelList.folder, modelList.name));
-
-else
-    [file, location] = uigetfile(gavdNetDataPath, 'Select a model to load:');
-    load(fullfile(location, file))
-    [~, modelName, ~] = fileparts(fullfile(location, file));
+    clearvars -except configPath many_inferenceResultsPaths maxDetectionDuration gtFormat groundtruthPath many_gavdNetDataPaths
+    clear persistent
 end
-
-% Re-load the postprocessor parameters used at inference:
-load(inferenceResultsPath, "postProcOptions")
-
-% Reload the feature framing mode used at inference:
-load(inferenceResultsPath, "featureFraming");
-
-%% Compare Detector Output to Groundtruth
-
-% Run groundtruth comparison
-[metrics, FP, FN] = compareDetectionsToSubsampledTestDataset(...
-    groundtruthPath, inferenceResultsPath, detectionTolerance, maxDetectionDuration, gtFormat);
-
-%% Save Results
-
-% Compile results and test params
-testCompleteTime = string(datetime("now", "Format", "dd-MMM-uuuu_HH-mm-ss"));
-[~, dataSetName, ~] = fileparts(fileparts(groundtruthPath));
-
-confDist = metrics.confidenceDistribution;
-confPercentile1 = confDist.confPercentiles(1);
-confPercentile50 = confDist.confPercentiles(5);
-confPercentile99 = confDist.confPercentiles(9);
-
-outTable = struct2table(metrics);
-outTable = removevars(outTable, {'temperatureScaling', 'roc', 'performanceCurve', ...
-    'evaluatedResultCount', 'numResultsExcluded_NoScoreOrTime',...
-    'groundtruthSource', 'numResultsExcluded_InferenceFailures',...
-    'matchingAlgorithm', 'totalAudioDuration_sec', 'confidenceDistribution',...
-    'detectionTolerance_sec', 'sensitivity'});
-newNames = {'1stPrctileConf', '50thPrctileConf', '99thPrctileConf', ...
-    'ActivationThreshold', 'DeactivationThreshold', 'AEAVD', ...
-    'MergeThreshold', 'LengthThresholdScaler', 'LengthThreshold', ...
-    'TestTimeStamp', 'ModelName', 'TestDataset', 'SequenceSNRRange',...
-    'FeatureFramingMode', 'FrameStandardization'};
-outTable = addvars(outTable, confPercentile1, confPercentile50, ...
-    confPercentile99, postProcOptions.AT, postProcOptions.DT, ...
-    postProcOptions.AEAVD, postProcOptions.MT, postProcOptions.LT_scaler, ...
-    postProcOptions.LT, testCompleteTime, string(modelName), dataSetName,...
-    model.dataSynthesisParams.snrRange,...
-    string(featureFraming), string(frameStandardization), 'NewVariableNames', newNames);
-
-% Write output to CSV
-if exist(gtCompareResultsPath, 'file') == 2
-    % Append data without headers
-    writetable(outTable, gtCompareResultsPath, 'WriteMode', 'append', 'WriteVariableNames', false);
-else
-    % File does not exist — write with headers
-    writetable(outTable, gtCompareResultsPath);
-end
-
-% Save disagreements
-disagreements = struct('falsePositives', FP, 'falseNegatives', FN);
-[resultsFolder, ~, ~] = fileparts(gtCompareResultsPath);
-saveNamePath = fullfile(resultsFolder,...
-    strcat('detector_vs_GT_disagreements_', testCompleteTime, '.mat'));
-save(saveNamePath, 'disagreements', '-v7.3')

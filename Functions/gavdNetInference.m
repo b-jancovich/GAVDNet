@@ -246,14 +246,12 @@ switch featureFraming
             % Convert 3D matrix to nested cell array to pack correctly for
             % concatoate function
             probabilitiesSegmentsFrames{i, 1} = (squeeze(num2cell(probabilitiesSegmentsFrames{i, 1}, [1 2])))';
-            % This is a 1x177 cell
 
             % Stitch together probability vectors for each frame and 
             % take the average of overlapping elements
             numSpectrogramTimeBins = size(featuresSegments{i, 1}, 2);
             probabilitiesSegments{i, 1} = concatenateOverlappingProbs(probabilitiesSegmentsFrames{i, 1}, ...
                 numSpectrogramTimeBins, model.featureFraming.frameHopLength);
-            % This is 110843x1 double & doesn't contain NaN
 
             % Do some dots so the user knows we haven't hung 
             fprintf('.')

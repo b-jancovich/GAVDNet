@@ -16,7 +16,6 @@
 % be used as the source data to construct the synthetic training sequences.
 % Each file name must contain a string indicating the year it was 
 % recorded, in the format "-2016_":
-% noiseless_sample_path = "D:\SORP_BmAntZ_exemplars\Denoised";
 noiseless_sample_path = "D:\SORP_BmAntZ_exemplars\Denoised";
 
 % Path to folder containing background noise samples (target call absent):
@@ -25,13 +24,14 @@ noiseless_sample_path = "D:\SORP_BmAntZ_exemplars\Denoised";
 noise_library_path = "D:\SORP_BmAntZ_noise_library";
 
 % Output path for trained model and intermediate training files:
-gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
+
+% Results path for inference
+inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar";
 
 % Folder containing audio files to run the detector on:
 inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\wav"; 
 
-% Results path for inference
-inferenceOutputPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10";
 
 %% Target Call Characteristics
 
@@ -78,7 +78,7 @@ end_trim_duration_range = [0.1, 1];     % Maximum duration of signal to
 %% Training Sequence Construction Parameters
 
 % Parameters for building synthetic training sequences
-snrRange = [-3, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
+snrRange = [-10, 10];       % Range of randomly set Signal to Noise ratios for calls in training sequences (dB)
 numSequences = 1200;        % Number of sequences to generate
 sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
 minCallSeparation = 1;      % Minimum separation between consecutive calls in a sequence (seconds)
