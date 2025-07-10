@@ -37,10 +37,15 @@ inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subse
 
 %% Target Call Characteristics
 
+% The synthetic data system models the downward frequency shift phenomenon
+% seen in the song of most (possibly all) Blue whale populations. If your
+% target call does not frequency shift, set pitch shift rate to zero and
+% use "freq_shift_tol" to set the maximum range of frequency variation.
+
 % Frequency parameters for the target call
 initial_freq = 32.97;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2017;    % The year of the initial_freq measurement
-freq_shift_rate = 0.33;     % Annual frequency shift rate (Hz/year)
+freq_shift_rate = 0.33;     % Annual frequency decline rate (Hz/year)
 freq_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
 detect_year_range = [2006, 2008]; % Time period represented by the synthetic dataset
 

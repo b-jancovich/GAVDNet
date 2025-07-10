@@ -27,15 +27,15 @@ clear persistent
 %% **** USER INPUT ****
 
 % Path to the config file:
-% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 
 % Path to the Ground Truth Annotations file
-% groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
-groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
+groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
+% groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 
 % Test dataset format
-gtFormat = 'SORP'; % Either "CTBTO" or "SORP"
+gtFormat = 'CTBTO'; % Either "CTBTO" or "SORP"
  
 % True known call duration (Only used to set end time for missed detections)
 maxDetectionDuration = 40; % (seconds)
@@ -48,29 +48,29 @@ AT_sweep_values = linspace(0.95, 0.005, 30);
 
 LTScaler_sweep_values = 0.5;
 
+% % Different output paths for each version of the detector we are testing:
+% many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
+% many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+% many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
+% many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
+% 
+% % Output paths for the results from each version of the detector:
+% many_inferenceOutputPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar";
+% many_inferenceOutputPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10";
+% many_inferenceOutputPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-6 to 10";
+% many_inferenceOutputPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-3 to 10";
+
 % Different output paths for each version of the detector we are testing:
-many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
-many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
-many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
-many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
+many_inferenceOutputPaths{1} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar";
+many_inferenceOutputPaths{2} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10";
+many_inferenceOutputPaths{3} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
+many_inferenceOutputPaths{4} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-3 to 10";
 
 % Output paths for the results from each version of the detector:
-many_inferenceOutputPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10 Single Exemplar";
-many_inferenceOutputPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10";
-many_inferenceOutputPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-6 to 10";
-many_inferenceOutputPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-3 to 10";
-
-% Different output paths for each version of the detector we are testing:
-% many_inferenceOutputPaths{1} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar";
-% many_inferenceOutputPaths{2} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10";
-% many_inferenceOutputPaths{3} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-6 to 10";
-% many_inferenceOutputPaths{4} = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-3 to 10";
-
-% Output paths for the results from each version of the detector:
-% many_gavdNetDataPaths{1} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
-% many_gavdNetDataPaths{2} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10";
-% many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
-% many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
+many_gavdNetDataPaths{1} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
+many_gavdNetDataPaths{2} = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10";
+many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
+many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

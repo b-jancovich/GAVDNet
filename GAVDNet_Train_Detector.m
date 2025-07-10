@@ -306,26 +306,39 @@ for modelNumber = 1:nModels
     % The regexp pattern for the year in the filename:
     pattern = '.*-(\d{4})_.*';
     for i = 1:n_noiseless_samples
-        % Extract the year from a filename using regular expression
-        noiselessSampleFileName = noiseless_samples(i).name;
-        matches = regexp(noiselessSampleFileName, pattern, 'tokens');
-        noiseless_samples(i).sample_year = str2double(matches{1}{1});
-        noiseless_samples(i).CFreq = initial_freq - ((noiseless_samples(i).sample_year...
-            - initial_freq_year) * freq_shift_rate);
 
-        % Calculate Max range of freq shift for each noiseless sample
-        n_future_years = max(year_list) - noiseless_samples(i).sample_year;
-        n_past_years = noiseless_samples(i).sample_year - min(year_list);
-        max_up_shift_hz = ((n_past_years + 1) * freq_shift_rate) + freq_shift_tol;
-        max_down_shift_hz = ((n_future_years + 1) * freq_shift_rate) + freq_shift_tol;
+        % % Extract the year from a filename using regular expression
+        % noiselessSampleFileName = noiseless_samples(i).name;
+        % matches = regexp(noiselessSampleFileName, pattern, 'tokens');
+        % noiseless_samples(i).sample_year = str2double(matches{1}{1});
+        % noiseless_samples(i).CFreq = initial_freq - ((noiseless_samples(i).sample_year...
+        %     - initial_freq_year) * freq_shift_rate);
+        % 
+        % % Calculate Max range of freq shift for each noiseless sample
+        % n_future_years = max(year_list) - noiseless_samples(i).sample_year;
+        % n_past_years = noiseless_samples(i).sample_year - min(year_list);
+        % max_up_shift_hz = ((n_past_years + 1) * freq_shift_rate) + freq_shift_tol;
+        % max_down_shift_hz = ((n_future_years + 1) * freq_shift_rate) + freq_shift_tol;
+        % 
+        % % Augmenter's pitch shifter works in semitones, so convert from Hz relative
+        % % to the fundamental frequency of the clean sample:
+        % max_up_shift_semitones = 12 * log2((noiseless_samples(i).CFreq + max_up_shift_hz) ...
+        %     / noiseless_samples(i).CFreq);
+        % max_down_shift_semitones = 12 * log2((noiseless_samples(i).CFreq - max_down_shift_hz) ...
+        %     / noiseless_samples(i).CFreq);
+        % noiseless_samples(i).pitch_shift_range_semitones = [max_down_shift_semitones, max_up_shift_semitones];
 
-        % Augmenter's pitch shifter works in semitones, so convert from Hz relative
-        % to the fundamental frequency of the clean sample:
-        max_up_shift_semitones = 12 * log2((noiseless_samples(i).CFreq + max_up_shift_hz) ...
-            / noiseless_samples(i).CFreq);
-        max_down_shift_semitones = 12 * log2((noiseless_samples(i).CFreq - max_down_shift_hz) ...
-            / noiseless_samples(i).CFreq);
-        noiseless_samples(i).pitch_shift_range_semitones = [max_down_shift_semitones, max_up_shift_semitones];
+        % Calculate range of pitch variation in semitones, modelling annual
+        % frequency decline and with some additional random variation.
+        [noiseless_samples(i).sample_year, ...
+            noiseless_samples(i).CFreq, ...
+            noiseless_samples(i).pitch_shift_range_semitones] = calculatePitchShiftRange(...
+            noiseless_samples(i).name, ...
+            pattern, initial_freq, ...
+            initial_freq_year, ...
+            freq_shift_rate, ...
+            year_list, ...
+            freq_shift_tol);
 
         if buildCleanSignals == true
             % Build the augmenter, and set it to make "n_augmented_copies" per

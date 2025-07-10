@@ -38,12 +38,12 @@ inferenceAudioPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test 
 % The synthetic data system models the downward frequency shift phenomenon
 % seen in the song of most (possibly all) Blue whale populations. If your
 % target call does not frequency shift, set pitch shift rate to zero and
-% use "pitch_shift_tol" to set the maximum range of frequency variation.
+% use "freq_shift_tol" to set the maximum range of frequency variation.
 
 % Frequency parameters for the target call
 initial_freq = 25.8;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2015;    % The year of the initial_freq measurement
-freq_shift_rate = 0.135;     % Annual frequency shift rate (Hz/year)
+freq_shift_rate = 0.135;     % Annual frequency decline rate (Hz/year)
 freq_shift_tol = 0.5;       % Additional range of variation in pitch shifting to account for intra-seasonal shift (Hz)
 detect_year_range = [2013, 2015]; % Time period represented by the synthetic dataset
 

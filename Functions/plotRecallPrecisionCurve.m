@@ -79,5 +79,4 @@ function plotRecallPrecisionCurve(sweepResults, figPath)
     fprintf('  .svg: %s\n', strcat(figPath, '.svg'));
     fprintf('  .tif: %s\n', strcat(figPath, '.tif'));
     
-    close(fig);
 end
