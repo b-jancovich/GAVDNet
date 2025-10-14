@@ -1,6 +1,6 @@
 function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, postprocParams, features)
 % This function converts the vector of detection probabilities (per 
-% spectrpgram frame) to region of interest (roi) boundaries in samples, and
+% spectrogram frame) to region of interest (roi) boundaries in samples, and
 % applies heuristics to filter out detections that are of unrealisticlly 
 % short duration and merge detections that are likely not discrete. It also
 % sets the upper and lower probability thresholds for detections, and
@@ -28,7 +28,7 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 %                       - 'MT' (Merge threshold): merges vocalization regions
 %                       that are separated by MT seconds or less. Specify 
 %                       as a nonnegative scalar. 
-%                       - 'LT' (Length threshold): removes vocalization regions
+%                       - 'LT' (Length threshold): removes detection regions
 %                       that have a duration of LT seconds or less. Specify 
 %                       as a nonnegative scalar. It is recommended to use 
 %                       the "minimum call duration" parameter used for 
@@ -43,9 +43,9 @@ function varargout = gavdNetPostprocess(audioIn, fileFs, probs, preprocParams, p
 %   roi - Call regions, returned as an N-by-2 matrix of indices into the 
 %           input signal, where N is the number of individual call regions 
 %           detected. The first column contains the index of the start of 
-%           a speech region, and the second column contains the index of 
+%           a target signal region, and the second column contains the index of 
 %           the end of a region.
-%   probs - Probability of speech per sample of the input audio signal, 
+%   probs - Probability of target signal per sample of the input audio signal, 
 %           returned as a column vector with the same size as the input
 %           signal. (optional)
 %   confidence - Confidence scores for each detected region, returned as an
