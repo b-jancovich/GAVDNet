@@ -203,6 +203,7 @@ for modelNumber = 1:nModels
         [noiseless_samples.folder, noiseless_samples.name, ext] = fileparts(...
             noiseless_sample_path);
         noiseless_samples.name = strcat(noiseless_samples.name, ext);
+        
         % Load the noiseless detection from which to build the test dataset.
         [noiseless_samples.audio, noiseless_samples.Fs] = audioread(...
             noiseless_sample_path);
@@ -306,27 +307,6 @@ for modelNumber = 1:nModels
     % The regexp pattern for the year in the filename:
     pattern = '.*-(\d{4})_.*';
     for i = 1:n_noiseless_samples
-
-        % % Extract the year from a filename using regular expression
-        % noiselessSampleFileName = noiseless_samples(i).name;
-        % matches = regexp(noiselessSampleFileName, pattern, 'tokens');
-        % noiseless_samples(i).sample_year = str2double(matches{1}{1});
-        % noiseless_samples(i).CFreq = initial_freq - ((noiseless_samples(i).sample_year...
-        %     - initial_freq_year) * freq_shift_rate);
-        % 
-        % % Calculate Max range of freq shift for each noiseless sample
-        % n_future_years = max(year_list) - noiseless_samples(i).sample_year;
-        % n_past_years = noiseless_samples(i).sample_year - min(year_list);
-        % max_up_shift_hz = ((n_past_years + 1) * freq_shift_rate) + freq_shift_tol;
-        % max_down_shift_hz = ((n_future_years + 1) * freq_shift_rate) + freq_shift_tol;
-        % 
-        % % Augmenter's pitch shifter works in semitones, so convert from Hz relative
-        % % to the fundamental frequency of the clean sample:
-        % max_up_shift_semitones = 12 * log2((noiseless_samples(i).CFreq + max_up_shift_hz) ...
-        %     / noiseless_samples(i).CFreq);
-        % max_down_shift_semitones = 12 * log2((noiseless_samples(i).CFreq - max_down_shift_hz) ...
-        %     / noiseless_samples(i).CFreq);
-        % noiseless_samples(i).pitch_shift_range_semitones = [max_down_shift_semitones, max_up_shift_semitones];
 
         % Calculate range of pitch variation in semitones, modelling annual
         % frequency decline and with some additional random variation.
@@ -449,11 +429,6 @@ for modelNumber = 1:nModels
     %% Build Sequences from clean samples & noise, saving them direct to disk
 
     if buildSequences == true
-        % If we haven't already built the sequences of calls, build now
-        % constructNoisySequences(ads_cleanSignals, ads_noise, numSequences, ...
-        %     sequenceDuration, snrRange, ICI, ICI_variation, ...
-        %     sequencesPath);
-
         % If we haven't already built the sequences of calls, build now
         constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
             numSequences, numCallsPerSequence, sequenceDuration, ...
