@@ -12,21 +12,19 @@ Training a single detector model typically takes 1 to 8 hours depending on your 
 
 ## Software requirements:
 
-• MATLAB R2024a or later
-• Audio Toolbox
-• Deep Learning Toolbox
-• Parallel Computing Toolbox (recommended, not strictly required)
-• Signal Processing Toolbox
-• Wavelet Toolbox (for data preparation utilities)
-• The customAudioAugmenter repository: https://github.com/b-jancovich/customAudioAugmenter
+• MATLAB R2024a or later  
+• Audio Toolbox  
+• Deep Learning Toolbox  
+• Parallel Computing Toolbox (recommended, not strictly required)  
+• Signal Processing Toolbox  
+• Wavelet Toolbox (for data preparation utilities)  
+• The customAudioAugmenter repository: https://github.com/b-jancovich/customAudioAugmenter  
 
 ## Hardware recommendations:
 
-• 64 GB RAM minimum
-• NVIDIA GPU with 8 GB or more memory and CUDA support
-• ~500 GB or more free disk space, preferably on an SSD
-• Multi-core CPU
-
-
+• 64 GB RAM minimum  
+• NVIDIA GPU with 8 GB or more memory and CUDA support  
+• ~500 GB or more free disk space, preferably on an SSD  
+• Multi-core CPU  
 
 ## See GAVDNet\_User\_Guide.pdf for full instructions on installation and use
