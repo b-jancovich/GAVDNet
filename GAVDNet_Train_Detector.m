@@ -705,10 +705,6 @@ for modelNumber = 1:nModels
     
 end
 
-%% Notify user of completion
-
-sendOutlookMail("benlikesound@me.com", "Matlab Program Finished", "This is an automatic notification: your model training program is complete.")
-
 %% Helper Functions
 
 function out = readMatFileWithCellOutput(filename)

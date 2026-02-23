@@ -90,7 +90,7 @@ else
     xx = x(:);
 end
 
-% Set the FFT length at 8 * the next power of 2 larger than window length
+% Set the FFT length at 4 * the next power of 2 larger than window length
 FFTLen = 4 * 2^(ceil(log2(windowLen)));
 
 % Error if signal is less than one window + one hop.

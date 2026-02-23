@@ -1,19 +1,25 @@
-function plotRecallPrecisionCurve(sweepResults, figPath)
+function plotRecallPrecisionCurve(sweepResults, figPath, thresholdLabel)
 % PLOTRECALLPRECISIONCURVE Creates and saves recall-precision curve figure
 %
 % This function creates a figure showing how precision and recall vary as a
-% function of activation threshold (AT) for the parametric sweep results.
+% function of a swept threshold for the parametric sweep results.
 % The figure is saved in multiple formats (.fig, .emf, .svg, .tif).
 %
 % INPUTS:
-%   sweepResults - Structure containing AT_values, precision, recall, f1Score
-%   figPath      - String path for saving figure (without extension)
+%   sweepResults   - Structure containing AT_values, precision, recall, f1Score
+%   figPath        - String path for saving figure (without extension)
+%   thresholdLabel - (Optional) String label for the threshold axis and
+%                    colorbar. Default: 'Activation Threshold'
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
 % School of Biological, Earth and Environmental Sciences
 % University of New South Wales, Sydney, Australia
 %
+
+    if nargin < 3
+        thresholdLabel = 'Activation Threshold';
+    end
 
     % Sort results by activation threshold for proper plotting
     [sortedAT, sortIdx] = sort(sweepResults.AT_values);
@@ -42,7 +48,7 @@ function plotRecallPrecisionCurve(sweepResults, figPath)
     ylabel('Precision');
     colormap(parula);
     c = colorbar('Location', 'eastoutside', 'Limits', [0, 1]);
-    c.Label.String = 'Activation Threshold';
+    c.Label.String = thresholdLabel;
     c.FontSize = fontSz;
     c.Ticks = 0:0.2:1;
     grid on;
@@ -54,7 +60,7 @@ function plotRecallPrecisionCurve(sweepResults, figPath)
     % Subplot 2: F1-Score vs Activation Threshold
     nexttile;
     plot(sortedAT, sortedF1, '*-');
-    xlabel('Activation Threshold');
+    xlabel(thresholdLabel);
     ylabel('F1-Score');
     grid on;
     xlim([0, 1]);

@@ -242,6 +242,75 @@ else
     warning('Cannot calculate performance curve: missing duration, GT, or scores');
 end
 
+%% Calculate Precision-Recall Curve (Confidence Threshold Sweep)
+%
+% Sweep unique confidence thresholds to compute precision, recall, and F1
+% at each threshold. This produces a precision-recall curve that can be
+% plotted independently of the activation threshold sweep.
+%
+% Ben Jancovich, 2025
+% Centre for Marine Science and Innovation
+% School of Biological, Earth and Environmental Sciences
+% University of New South Wales, Sydney, Australia
+
+fprintf('Calculating precision-recall curve (confidence threshold sweep)...\n');
+
+prCurve = struct('AT_values', NaN, 'precision', NaN, 'recall', NaN, 'f1Score', NaN);
+
+if nPositivesGT_adj > 0 && ~isempty(confidenceScores_valid) && length(unique(resultLabels_valid)) >= 1
+
+    uniqueScoresSorted_pr = sort(unique(confidenceScores_valid), 'descend');
+
+    if ~isempty(uniqueScoresSorted_pr)
+        % Build threshold vector with boundary values
+        thresholds_pr = [uniqueScoresSorted_pr(1)+eps(uniqueScoresSorted_pr(1)); ...
+                         uniqueScoresSorted_pr; ...
+                         uniqueScoresSorted_pr(end)-eps(uniqueScoresSorted_pr(end))];
+        thresholds_pr = unique(thresholds_pr);
+        thresholds_pr = sort(thresholds_pr, 'descend');
+
+        nThresholds = length(thresholds_pr);
+        pr_precision = zeros(nThresholds, 1);
+        pr_recall = zeros(nThresholds, 1);
+        pr_f1 = zeros(nThresholds, 1);
+
+        for i = 1:nThresholds
+            thr = thresholds_pr(i);
+            aboveIdx = (confidenceScores_valid >= thr);
+
+            tp_t = sum(resultLabels_valid(aboveIdx) == 1);
+            fp_t = sum(resultLabels_valid(aboveIdx) == 0);
+            fn_t = nPositivesGT_adj - tp_t;
+
+            % Precision
+            if (tp_t + fp_t) > 0
+                pr_precision(i) = tp_t / (tp_t + fp_t);
+            else
+                pr_precision(i) = NaN;
+            end
+
+            % Recall
+            pr_recall(i) = tp_t / nPositivesGT_adj;
+
+            % F1
+            if ~isnan(pr_precision(i)) && (pr_precision(i) + pr_recall(i)) > 0
+                pr_f1(i) = 2 * pr_precision(i) * pr_recall(i) / (pr_precision(i) + pr_recall(i));
+            else
+                pr_f1(i) = NaN;
+            end
+        end
+
+        prCurve.AT_values = thresholds_pr;
+        prCurve.precision = pr_precision;
+        prCurve.recall = pr_recall;
+        prCurve.f1Score = pr_f1;
+
+        fprintf('  Precision-recall curve calculated (%d thresholds)\n', nThresholds);
+    end
+else
+    warning('Cannot calculate precision-recall curve: insufficient data');
+end
+
 %% Analyze Confidence Score Distribution
 
 fprintf('Analyzing confidence distribution...\n');
@@ -278,12 +347,15 @@ metrics.auc = AUC;
 % Curves
 metrics.roc = struct('fpr', X_roc, 'tpr', Y_tpr, 'thresholds', T_thresholds_roc);
 metrics.performanceCurve = struct('faps', perf_falseAlarmRates, 'tpr', perf_detectionRates, 'thresholds', T_thresholds_perf);
+metrics.prCurve = prCurve;
 
 % Additional info
 metrics.totalAudioDuration_sec = totalAudioDuration;
 metrics.detectionTolerance_sec = detectionTolerance;
 metrics.temperatureScaling = temperatureScaling;
 metrics.confidenceDistribution = confidenceDistribution;
+metrics.confidenceScores = confidenceScores_valid;
+metrics.resultLabels = resultLabels_valid;
 metrics.matchingAlgorithm = 'Hungarian (matchpairs) with adjudication';
 
 fprintf('Metrics calculation complete.\n\n');

@@ -31,18 +31,18 @@ clc
 clear persistent
 
 %% **** USER INPUT ****
-
+% 
 % % CHAGOS CONFIGURATION
 % adjudicatedDisagreementsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Adjudication\adjudication_results_G.Truong\B.musc.brev_ChagosSong_DiegoGarcia_2007_ADJUDICATED\detector_vs_GT_disagreements_07-Jul-2025_08-57-43.mat";
-% inferenceResultsPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar\detector_results_postprocessed.mat";
-% gavdNetDataPath = "D:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
-% groundtruthPath = "D:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
+% inferenceResultsPath = "E:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar\detector_results_postprocessed.mat";
+% gavdNetDataPath = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
+% groundtruthPath = "E:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";
 % gtFormat = 'CTBTO';
 
 % Z-CALL CONFIGURATION
 adjudicatedDisagreementsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Adjudication\adjudication_results_G.Truong\B.musc.int_ZCall_CaseyStation_2014_ADJUDICATED\detector_vs_GT_disagreements_07-Jul-2025_10-06-37.mat";
-inferenceResultsPath = "D:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10\detector_results_postprocessed.mat";
-gavdNetDataPath = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+inferenceResultsPath = "E:\GAVDNet\BmAntZ_SORP\Test Results\Final Test - Casey2014\-10 to 10\detector_results_postprocessed.mat";
+gavdNetDataPath = "E:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
 groundtruthPath = "C:\Users\z5439673\OneDrive - UNSW\Documents\Detector Test Datasets\AAD_AcousticTrends_BlueFinLibrary\DATA\casey2014\Casey2014.Bm.Ant-Z.selections.txt";
 gtFormat = 'SORP';
 
@@ -71,7 +71,7 @@ fprintf('=== GAVDNet Adjudicated Performance Metrics Analysis ===\n');
 fprintf('Started: %s\n\n', char(datetime("now")));
 
 % Add Functions to path
-projectRoot = pwd;
+projectRoot = fileparts(fileparts(mfilename('fullpath')));
 addpath(fullfile(projectRoot, "Functions"))
 
 %% Load Data
@@ -255,6 +255,58 @@ fprintf('Generating confusion matrices...\n');
 figPath = fullfile(outputFolder, sprintf('confusion_matrices_%s', ts));
 createConfusionMatrices(metricsArray, logicNames, figPath);
 
+%% Generate Post-Adjudication Precision-Recall Curves
+%
+% Ben Jancovich, 2025
+% Centre for Marine Science and Innovation
+% School of Biological, Earth and Environmental Sciences
+% University of New South Wales, Sydney, Australia
+
+fprintf('Generating post-adjudication precision-recall curves...\n');
+
+for iLogic = 1:nLogics
+    metrics = metricsArray{iLogic};
+    logicName = logicNames{iLogic};
+
+    if isfield(metrics, 'prCurve') && isstruct(metrics.prCurve) && ...
+       length(metrics.prCurve.AT_values) > 1
+
+        prFigPath = fullfile(outputFolder, ...
+            sprintf('pr_curve_%s_%s', strrep(logicName, '-', '_'), ts));
+        plotRecallPrecisionCurve(metrics.prCurve, prFigPath, 'Confidence Threshold');
+        fprintf('  %s: PR curve saved.\n', logicName);
+    else
+        fprintf('  %s: Insufficient data for PR curve, skipping.\n', logicName);
+    end
+end
+
+fprintf('\n');
+
+%% Generate Adjudication Outcome Breakdown
+
+fprintf('Generating adjudication outcome breakdown...\n');
+figPath = fullfile(outputFolder, sprintf('adjudication_outcome_breakdown_%s', ts));
+plotAdjudicationOutcomeBreakdown(disagreements, figPath);
+
+%% Generate Confidence Score Distributions
+
+fprintf('Generating confidence score distributions...\n');
+figPath = fullfile(outputFolder, sprintf('confidence_distributions_%s', ts));
+plotConfidenceDistributions(metricsArray, logicNames, figPath);
+
+%% Generate Post-Adjudication ROC Curves
+
+fprintf('Generating post-adjudication ROC curves...\n');
+figPath = fullfile(outputFolder, sprintf('roc_curves_%s', ts));
+plotAdjudicatedROCCurves(metricsArray, logicNames, figPath);
+
+%% Generate Pre- vs Post-Adjudication Waterfall
+
+fprintf('Generating pre- vs post-adjudication waterfall...\n');
+figPath = fullfile(outputFolder, sprintf('adjudication_waterfall_%s', ts));
+plotAdjudicationWaterfall(metricsArray, logicNames, ...
+    nTruePositives_original, nFalsePositives_original, nFalseNegatives_original, figPath);
+
 %% Export Results to Excel
 
 fprintf('Exporting results to Excel...\n');
@@ -282,7 +334,7 @@ for iLogic = 1:nLogics
     % Create table row
     outTable = struct2table(metrics, 'AsArray', true);
     outTable = removevars(outTable, {'temperatureScaling', 'roc', 'performanceCurve', ...
-        'confidenceDistribution'});
+        'prCurve', 'confidenceDistribution', 'confidenceScores', 'resultLabels'});
     
     % Add additional columns
     outTable = addvars(outTable, ...

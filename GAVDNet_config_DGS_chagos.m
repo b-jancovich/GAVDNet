@@ -45,7 +45,7 @@ inferenceOutputPath = "D:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subse
 % Frequency parameters for the target call
 initial_freq = 32.97;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2017;    % The year of the initial_freq measurement
-freq_shift_rate = 0.33;     % Annual frequency decline rate (Hz/year)
+freq_shift_rate = 0.33;     % Annual frequency decline rate (if none, set to 0) (Hz/year)
 freq_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
 detect_year_range = [2006, 2008]; % Time period represented by the synthetic dataset
 
