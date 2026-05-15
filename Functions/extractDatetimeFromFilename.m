@@ -121,7 +121,7 @@ remaining_patterns = {
     '^(\d{4})-(\d{2})-(\d{2})[_-](\d{2})-(\d{2})-(\d{2})', ... % YYYY-MM-DD_HH-mm-SS or YYYY-MM-DD-HH-mm-SS
     '^(\d{4})-(\d{2})-(\d{2})[_-](\d{2}):(\d{2}):(\d{2})', ... % YYYY-MM-DD_HH:mm:SS or YYYY-MM-DD-HH:mm:SS
     '^(\d{4})(\d{2})(\d{2})[_-](\d{2}):(\d{2}):(\d{2})', ... % YYYYMMDD_HH:mm:SS or YYYYMMDD-HH:mm:SS
-    '^(\d+)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})' ... % xxx_YYYY-MM-DD_HH-mm-SS
+    '^(.+?)_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})' ... % xxx_YYYY-MM-DD_HH-mm-SS (xxx may be alphanumeric)
 };
 
 for i = 1:length(remaining_patterns)

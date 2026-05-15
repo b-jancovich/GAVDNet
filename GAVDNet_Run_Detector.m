@@ -32,7 +32,7 @@ plotting = false;
 % configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
 configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
 
-% Different output paths for each version of the detector we are testing:
+% Trained model paths for each version of the detector we are testing:
 % many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
 % many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
 % many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
