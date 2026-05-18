@@ -1,23 +1,39 @@
 function constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
     numSequences, numCallsPerSequence, sequenceDuration, minCallSeparation,...
-    snrRange, bandwidth, sequencesPath)
+    snrRange, bandwidth, sequencesPath, chorusParams)
 % constructMultiCallNoisySequences Creates sequences of noisy animal calls with controlled SNR
 %
 % This function constructs synthetic audio sequences by placing clean call samples
-% at random non-overlapping positions within background noise. Both the calls and 
-% noise are bandpass filtered, then the calls are scaled based on filtered power 
-% measurements to achieve specific signal-to-noise ratios.
+% at random non-overlapping positions within background noise. Both the calls and
+% noise are bandpass filtered, then the calls are scaled based on filtered power
+% measurements to achieve specific signal-to-noise ratios. Optionally, a
+% synthetic chorus track (overlapping distant conspecific calls) is mixed
+% into a configurable fraction of sequences. Chorus is always labelled
+% negative because the per-sample mask is set only inside the discrete
+% call placement loop; chorus is added to the noise track after that
+% loop, never to the mask.
 %
 % Inputs:
 %   ads_cleanSignals    - audioDatastore containing clean call samples
-%   ads_noise          - audioDatastore containing noise samples  
-%   numSequences       - number of sequences to generate
+%   ads_noise           - audioDatastore containing noise samples
+%   numSequences        - number of sequences to generate
 %   numCallsPerSequence - number of calls to place in each sequence
-%   sequenceDuration   - duration of each sequence in seconds
-%   minCallSeparation  - minimum separation between calls in seconds
-%   snrRange           - two-element vector [min, max] specifying SNR range in dB
-%   bandwidth          - two-element vector [min, max] specifying frequency range in Hz
-%   sequencesPath      - path to save the generated sequences and masks
+%   sequenceDuration    - duration of each sequence in seconds
+%   minCallSeparation   - minimum separation between calls in seconds
+%   snrRange            - two-element vector [min, max] specifying SNR range in dB
+%   bandwidth           - two-element vector [min, max] specifying frequency range in Hz
+%   sequencesPath       - path to save the generated sequences and masks
+%   chorusParams        - (optional) struct with chorus injection settings. Required fields:
+%                           .enableChorus                       (logical)
+%                           .chorus_probability                 (scalar, [0,1])
+%                           .num_calls_in_chorus                (positive int)
+%                           .chorus_calls_level_range           ([min, max] dB)
+%                           .chorus_call_overlap_range          ([min, max] frac in (0,1))
+%                           .chorus_sequence_level_range        (scalar dB, positive)
+%                           .chorus_modulation_period_s         (scalar s)
+%                           .chorus_to_calls_snr_offset_range   ([min, max] dB; negative offsets keep
+%                                                                chorus below the loudest discrete call)
+%                         If omitted, chorus injection is disabled.
 %
 % Outputs:
 %   None (saves sequences and masks to disk as .mat files)
@@ -26,9 +42,15 @@ function constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
 %   - Both datastores must have the same sample rate
 %   - Sequences are saved with filename 'audiosequence_and_mask_N.mat'
 %   - Each .mat file contains:
-%     * audioSequence - the noisy audio sequence (normalized to 0.99 max amplitude)
-%     * mask - binary mask indicating call presence
-%     * sequenceSNRs - array of SNR values used for each call
+%     * audioSequence  - the noisy audio sequence (normalized to 0.99 max amplitude)
+%     * mask           - binary mask indicating call presence (chorus does NOT set mask=true)
+%     * sequenceSNRs   - array of intended per-call SNR values (dB). When chorus is
+%                        present, the EFFECTIVE SNR experienced by the network is lower
+%                        than these values; chorusSNR_used and chorusGain_used quantify
+%                        the chorus contribution.
+%     * chorusEnabled  - logical, whether chorus was injected for this sequence
+%     * chorusSNR_used - chorus SNR vs filtered noise (dB), or NaN if chorus skipped
+%     * chorusGain_used- linear gain applied to the unit-RMS chorus track, or NaN
 %   - Calls are placed with random non-overlapping positions with minimum separation
 %   - Both noise and calls are bandpass filtered using 8th-order elliptic filter
 %   - SNR scaling is based on power measurements of filtered signals
@@ -37,7 +59,7 @@ function constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
 %
 % Filter specifications:
 %   - 8th-order elliptic bandpass filter
-%   - 0.1 dB maximum passband ripple  
+%   - 0.1 dB maximum passband ripple
 %   - 100 dB target stopband attenuation
 %
 % Ben Jancovich, 2025
@@ -46,6 +68,11 @@ function constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
 % University of New South Wales, Sydney, Australia
 %
 %% Begin
+
+% Default: chorus injection disabled if chorusParams was not supplied.
+if nargin < 10 || isempty(chorusParams)
+    chorusParams = struct('enableChorus', false);
+end
 
 % Get sample rate from the clean signals datastore
 reset(ads_cleanSignals);
@@ -154,6 +181,38 @@ for seqIdx = 1:numSequences
         mask(callStartIdx:callEndIdx) = true;
     end
 
+    % --- Optional chorus injection --------------------------------------
+    % Chorus is mixed into the noise track AFTER the discrete call
+    % placement loop. The mask is never touched here, so any chorus that
+    % coincides with a discrete call inherits the call's mask=true (the
+    % call's identity wins); chorus elsewhere stays mask=false (the
+    % implicit-negative invariant the network needs). The whole noise
+    % track (including chorus) then goes through the existing peak
+    % normalisation below, so no further scaling is required.
+    chorusEnabled    = false;
+    chorusSNR_used   = NaN;
+    chorusGain_used  = NaN;
+    if chorusParams.enableChorus && rand() < chorusParams.chorus_probability
+        chorus = generateChorus(ads_cleanSignals.Files, fs, sequenceDuration, chorusParams);
+
+        % Scale chorus so its filtered RMS matches a target SNR vs the
+        % filtered noise. The target SNR is tied to the loudest discrete
+        % call's SNR via chorus_to_calls_snr_offset_range.
+        nFilt = ctffilt(b, a, noise);
+        cFilt = ctffilt(b, a, chorus);
+        nPow  = mean(nFilt .^ 2);
+        cPow  = mean(cFilt .^ 2);
+
+        offRange  = chorusParams.chorus_to_calls_snr_offset_range;
+        offset_dB = offRange(1) + (offRange(2) - offRange(1)) * rand;
+        chorusSNR_used  = max(sequenceSNRs) + offset_dB;
+        chorusGain_used = sqrt(nPow * 10 ^ (chorusSNR_used / 10) / max(eps, cPow));
+
+        noise = noise + chorus * chorusGain_used;
+        chorusEnabled = true;
+    end
+    % --------------------------------------------------------------------
+
     % Add the noise to the sequence:
     noisySequence = cleanSequence + noise;
 
@@ -174,7 +233,8 @@ for seqIdx = 1:numSequences
     % spectrogram(noisySequence, 250, 230, 2048, fs, 'yaxis')
     
     % Save the sequence and mask
-    saveSequenceAndMask(noisySequence, mask, seqIdx, sequencesPath, sequenceSNRs);
+    saveSequenceAndMask(noisySequence, mask, seqIdx, sequencesPath, ...
+        sequenceSNRs, chorusEnabled, chorusSNR_used, chorusGain_used);
 end
 end
 
@@ -345,8 +405,10 @@ end
 
 end
 
-function saveSequenceAndMask(audioSequence, mask, seqIdx, sequencesPath, sequenceSNRs)
-    % Save the sequence and mask to a mat file
+function saveSequenceAndMask(audioSequence, mask, seqIdx, sequencesPath, ...
+        sequenceSNRs, chorusEnabled, chorusSNR_used, chorusGain_used)
+    % Save the sequence, mask, intended per-call SNRs, and chorus metadata
     filename = fullfile(sequencesPath, sprintf('audiosequence_and_mask_%d.mat', seqIdx));
-    save(filename, 'audioSequence', 'mask', 'sequenceSNRs');
+    save(filename, 'audioSequence', 'mask', 'sequenceSNRs', ...
+        'chorusEnabled', 'chorusSNR_used', 'chorusGain_used');
 end

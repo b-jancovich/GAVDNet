@@ -55,14 +55,32 @@ clear persistent
 
 %% **** USER INPUT ****
 
-% Build multiple models with different settings
-nModels = 4;
+% Path to the config file for the CPBW Song detector:
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos_exclude_chorus.m";
 
-% Different synthetic data SNR settings for each version of the model:
-snrRangeSweep = [-10, 10;
-                 -10, 10;
-                 -6, 10;
-                 -3, 10];
+% Noiseless sample path for the CPBW Song detector:
+many_noiseless_sample_paths = "E:\DGS_Chagos_Exemplars\U1 & U2\Denoised\detectionAudio_21560_19-Aug-2005_19_35_36_24.295708_RXDENOISED.wav";
+
+% Output path for the CPBW Song detector:
+many_gavdNetDataPaths{1} = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar Exclude Chorus";
+
+% This is a single model training run, no swept values:
+nModels = 1;
+snrRangeSweep = [-10, 10];
+
+%% Model comparison 
+
+% Below are inputs for comparing multiple models with different
+% numbers of exemplars, different SNRs etc.
+
+% % Build multiple models with different settings
+% nModels = 4;
+% 
+% % Different synthetic data SNR settings for each version of the model:
+% snrRangeSweep = [-10, 10;
+%                  -10, 10;
+%                  -6, 10;
+%                  -3, 10];
 
 % % Path to the config file for the CPBW Song detector:
 % configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
@@ -77,18 +95,18 @@ snrRangeSweep = [-10, 10;
 % many_gavdNetDataPaths{3} = "D:\GAVDNet\Chagos_DGS\Training & Models\-6 to 10";
 % many_gavdNetDataPaths{4} = "D:\GAVDNet\Chagos_DGS\Training & Models\-3 to 10";
 
-% Path to the config file for the Z-Call detector:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
-
-% Different noiseless sample paths for each version of the Z-Call detector:
-many_noiseless_sample_paths = "D:\SORP_BmAntZ_exemplars\Denoised\Bm_Ant_Z__ElephantIsland-2014_2014_8_26  20_03_29.627_rank8_3.1dB_RXDENOISE.wav"; 
-many_noiseless_sample_paths = [many_noiseless_sample_paths, repelem("D:\SORP_BmAntZ_exemplars\Denoised", 3)]';
-
-% Different output paths for each version of the Z-Call detector:
-many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
-many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
-many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
-many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
+% % Path to the config file for the Z-Call detector:
+% configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_SORP_BmAntZ.m";
+% 
+% % Different noiseless sample paths for each version of the Z-Call detector:
+% many_noiseless_sample_paths = "D:\SORP_BmAntZ_exemplars\Denoised\Bm_Ant_Z__ElephantIsland-2014_2014_8_26  20_03_29.627_rank8_3.1dB_RXDENOISE.wav"; 
+% many_noiseless_sample_paths = [many_noiseless_sample_paths, repelem("D:\SORP_BmAntZ_exemplars\Denoised", 3)]';
+% 
+% % Different output paths for each version of the Z-Call detector:
+% many_gavdNetDataPaths{1} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10 Single Exemplar";
+% many_gavdNetDataPaths{2} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-10 to 10";
+% many_gavdNetDataPaths{3} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-6 to 10";
+% many_gavdNetDataPaths{4} = "D:\GAVDNet\BmAntZ_SORP\Training & Models\-3 to 10";
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -429,10 +447,29 @@ for modelNumber = 1:nModels
     %% Build Sequences from clean samples & noise, saving them direct to disk
 
     if buildSequences == true
+        % Pack chorus parameters loaded from the config into the struct
+        % expected by constructMultiCallNoisySequences. Default to
+        % disabled if the config did not define enableChorus (older
+        % configs without the chorus block).
+        if exist('enableChorus', 'var') == 1
+            chorusParams = struct( ...
+                'enableChorus',                     enableChorus, ...
+                'chorus_probability',               chorus_probability, ...
+                'num_calls_in_chorus',              num_calls_in_chorus, ...
+                'chorus_calls_level_range',         chorus_calls_level_range, ...
+                'chorus_call_overlap_range',        chorus_call_overlap_range, ...
+                'chorus_sequence_level_range',      chorus_sequence_level_range, ...
+                'chorus_modulation_period_s',      chorus_modulation_period_s, ...
+                'chorus_to_calls_snr_offset_range', chorus_to_calls_snr_offset_range);
+        else
+            chorusParams = struct('enableChorus', false);
+        end
+
         % If we haven't already built the sequences of calls, build now
         constructMultiCallNoisySequences(ads_cleanSignals, ads_noise, ...
             numSequences, numCallsPerSequence, sequenceDuration, ...
-            minCallSeparation, snrRange, bandwidth, sequencesPath)
+            minCallSeparation, snrRange, bandwidth, sequencesPath, ...
+            chorusParams)
     end
 
     %% Set up datastores for pre-saved sequences
@@ -563,6 +600,14 @@ for modelNumber = 1:nModels
     numIterationsPerEpoch = ceil(numel(trainDS.Files) / miniBatchSize);
     valFreq = round(numIterationsPerEpoch / 10);
 
+    % Recover Hz shift range for metadata (the inline calc was removed when
+    % calculatePitchShiftRange was factored out -- re-derive it here so the
+    % recorded freqShiftRangeHz still reflects the last noiseless sample).
+    n_future_years = max(year_list) - noiseless_samples(end).sample_year;
+    n_past_years   = noiseless_samples(end).sample_year - min(year_list);
+    max_up_shift_hz   = ((n_past_years   + 1) * freq_shift_rate) + freq_shift_tol;
+    max_down_shift_hz = ((n_future_years + 1) * freq_shift_rate) + freq_shift_tol;
+
     % Preprocessor parameters:
     model.preprocParams.cleanSignalsFs = outputFs; % The final sample rate of the augmented call samples (Hz)
     model.preprocParams.fsTarget = fsTarget; % The sample rate at which the features are computed (Hz)
@@ -600,6 +645,16 @@ for modelNumber = 1:nModels
     model.dataSynthesisParams.meanTargetCallDuration = meanCallDuration;
     model.dataSynthesisParams.minTargetCallDuration = minCallDuration;
     model.dataSynthesisParams.maxTargetCallDuration = maxCallDuration;
+
+    % Chorus injection settings (for traceability; the actual chorus
+    % audio was applied at sequence-construction time and is no longer
+    % needed by inference, but recording the settings lets future
+    % analyses know what training conditions produced this model).
+    if exist('chorusParams', 'var') == 1
+        model.dataSynthesisParams.chorus = chorusParams;
+    else
+        model.dataSynthesisParams.chorus = struct('enableChorus', false);
+    end
 
     % Training Hyper-parameters:
     model.trainingHyperparams.miniBatchSize = miniBatchSize; % Number of training samples to run per training iterationmodel.

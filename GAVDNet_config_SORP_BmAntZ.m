@@ -83,9 +83,25 @@ numSequences = 1200;        % Number of sequences to generate
 sequenceDuration = 1800;    % Duration of training sequences to build (seconds)
 minCallSeparation = 1;      % Minimum separation between consecutive calls in a sequence (seconds)
 
-% NOTE: The number of calls per sequence is calculated automatically to 
-% ensure that approximately 50% of every sequence's duration contains the 
+% NOTE: The number of calls per sequence is calculated automatically to
+% ensure that approximately 50% of every sequence's duration contains the
 % call, and 50% does not.
+
+%% Chorus Injection Parameters
+
+% Synthetic chorus (overlapping distant conspecifics forming a continuous
+% background) can be mixed into a fraction of training sequences and is
+% automatically labelled negative (the per-sample mask is not touched),
+% teaching the network to distinguish discrete calls from chorus.
+
+enableChorus                       = false; % Master switch (default: disabled).
+chorus_probability                 = [];    % Per-sequence inclusion probability.
+num_calls_in_chorus                = [];    % Calls overlap-summed into the chorus base.
+chorus_calls_level_range           = [];    % Per-call amplitude jitter (dB).
+chorus_call_overlap_range          = [];    % Fractional temporal overlap of consecutive calls.
+chorus_sequence_level_range        = [];    % Slow envelope depth (dB, positive).
+chorus_modulation_period_s         = [];    % Approx fundamental period of the slow envelope (s).
+chorus_to_calls_snr_offset_range   = [];    % chorusSNR_vs_noise = max(sequenceSNRs) + offset (dB).
 
 %% Neural Network Training Parameters
 
