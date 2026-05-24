@@ -48,7 +48,7 @@ initial_freq = 32.97;        % Mean frequency of the fundamental component (Hz)
 initial_freq_year = 2017;    % The year of the initial_freq measurement
 freq_shift_rate = 0.33;     % Annual frequency decline rate (if none, set to 0) (Hz/year)
 freq_shift_tol = 0.5;       % Additional tolerance for pitch shifting (Hz)
-detect_year_range = [2006, 2008]; % Time period represented by the synthetic dataset
+detect_year_range = [2000, 2025]; % Time period represented by the synthetic dataset
 
 %% Input Audio Cleanup Parameters
 
@@ -170,11 +170,11 @@ frameStandardization = 'true'; % Sets whether the frequency bins of the
 
 %% Inference Post-Processing Parameters
 
-postProcOptions.AT = 0.50;   % Activation Threshold. Sets the probability
+postProcOptions.AT = 0.70;   % Activation Threshold. Sets the probability
 %                           threshold for starting a vocalisation segment.
 %                           Specify as a scalar in the range [0,1].
 
-postProcOptions.DT = 0.49;  % Deactivation Threshold. Sets the probability
+postProcOptions.DT = 0.699;  % Deactivation Threshold. Sets the probability
 %                           threshold for ending a vocalisation segment.
 %                           Specify as a scalar in the range [0,1].
 
@@ -183,11 +183,11 @@ postProcOptions.AEAVD = 0;  % Apply Energy Animal Vocalisation Detection
 %                           vocalization activity detector to refine the
 %                           regions detected by the neural network.
 
-postProcOptions.MT = 0.1;  % Merge Threshold. Merges vocalization regions
+postProcOptions.MT = 0.5;  % Merge Threshold. Merges vocalization regions
 %                           that are separated by MT seconds or less.
 %                           Specify as a nonnegative scalar.
 
-postProcOptions.LT_scaler = 0.5; % The length threshold is set based on
+postProcOptions.LT_scaler = 0.25; % The length threshold is set based on
 %                           the mean duration of the calls in the training
 %                           set, multiplied by this number. Any detection
 %                           peak shorter than the length threshold is

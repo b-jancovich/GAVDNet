@@ -1,5 +1,5 @@
 function [probabilities, features, execTime, silenceMask, numAudioSegments] = gavdNetInference(audio, fs, ...
-    model, memoryAvailable, featureFraming, frameStandardization, minSilenceDuration, plotting)
+    model, memoryAvailable, featureFraming, frameStandardization, minSilenceDuration, plotting, audioNormalize)
 % This function extracts features (i.e, spectrograms) from audio files, then 
 % runs them through a trained animal call detection model. The output is 
 % a vector of probability scores, one for every spectrogram time bin.
@@ -26,8 +26,17 @@ function [probabilities, features, execTime, silenceMask, numAudioSegments] = ga
 %                                 framing at training time, then it is
 %                                 broken into frames of that size, with the
 %                                 same overlap used at training.
+%   audioNormalize  - Optional logical flag. If true (default when omitted),
+%                     subtracts the DC component and divides by peak
+%                     amplitude before inference. Required for calibrated
+%                     archives whose absolute amplitude is far below the
+%                     training-data range (e.g. files calibrated to
+%                     physical pressure units), where the mel-spectrogram
+%                     + saturation pipeline would otherwise collapse to a
+%                     near-constant input and the network would return its
+%                     no-call rest state. Pass false to disable.
 %
-% NOTE: For long audio files with large variance in amplitude, the choice of 
+% NOTE: For long audio files with large variance in amplitude, the choice of
 % feature framing mode can have a dramatic effect on performance. For audio 
 % with relatively small dynamic range, and no high amplitude events that
 % could be considered outliers in terms of signal statistics, 'none' is
@@ -54,6 +63,22 @@ function [probabilities, features, execTime, silenceMask, numAudioSegments] = ga
 % University of New South Wales, Sydney, Australia
 %
 %% Begin:
+
+% Optional audio-amplitude normalisation. Default ON (opt-out by passing
+% audioNormalize=false). Required for calibrated archives whose absolute
+% amplitude is far below the training-data range, where the mel-spectrogram
+% + saturation pipeline would otherwise collapse to a near-constant input
+% and the network would return its no-call rest state (~0.13).
+if nargin < 9 || isempty(audioNormalize)
+    audioNormalize = true;
+end
+if audioNormalize
+    audio = audio - mean(audio, 'omitnan');
+    peakVal = max(abs(audio));
+    if peakVal > 0
+        audio = audio / peakVal;
+    end
+end
 
 switch featureFraming
     case 'none'

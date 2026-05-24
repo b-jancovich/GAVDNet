@@ -97,10 +97,10 @@ clear persistent
 plotting = false;
 
 % Path to the config file:
-configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos.m";
+configPath = "C:\Users\z5439673\Git\GAVDNet\GAVDNet_config_DGS_chagos_exclude_chorus.m";
 
 % Trained model Data Path (single fixed model for production run):
-gavdNetDataPath = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar";
+gavdNetDataPath = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar Exclude Chorus";
 
 % Root folder containing per-year subfolders of audio:
 audioRoot = "E:\Diego Garcia South 3Ch";
@@ -111,7 +111,7 @@ audioRoot = "E:\Diego Garcia South 3Ch";
 channelPrefix = "H08S1";
 
 % Output path - all per-year results files go here:
-inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_DGS_Detections_2000_to_2025";
+inferenceOutputPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet_DGS_Detections_2000_to_2025\-10 to 10 single exemplar exclude chorus";
 
 % --- eGPU stability mitigations ---
 % Max attempts at gavdNetInference per file before marking the file as
@@ -133,7 +133,7 @@ healthCheckThroughputMin = 1.5;
 % SSD) rather than inferenceOutputPath, so OneDrive sync never sees it.
 % Worst case crash loss = partialCacheEveryN - 1 files. The full raw
 % cache is always written at year completion regardless of this setting.
-partialCacheEveryN = 100;
+partialCacheEveryN = 250;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

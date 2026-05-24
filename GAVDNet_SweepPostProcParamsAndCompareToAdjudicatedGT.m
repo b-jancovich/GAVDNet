@@ -91,10 +91,10 @@ clear persistent
 % Replace these placeholder paths before running.
 
 % --- Paths ---
-trainedModelPath             = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar Exclude Chorus\GAVDNet_trained_18-May-2026_15-13.mat";
-inferenceOutputPath          = "E:\GAVDNet\Chagos_DGS\Test Results\Final Test - 2007subset\-10 to 10 Single Exemplar Exclude Chorus";        % must contain detector_raw_results.mat (run GAVDNet_Run_Detector.m first if absent)
-audioSourceFolder            = "E:\GAVDNet\Chagos_DGS\Test Data\2007subset";                                                                 % WAV files referenced by raw results + adjudicated FPs
-groundtruthPath              = "E:\GAVDNet\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";                                 % or .txt for SORP
+trainedModelPath             = "E:\GAVDNet\Chagos_DGS\Training & Models\-10 to 10 Single Exemplar Exclude Chorus\GAVDNet_trained_20-May-2026_12-16.mat";
+inferenceOutputPath          = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Data Backup\Chagos_DGS\Test Results\Final Test - 2007subset\Exclude Chorus"; % must contain detector_raw_results.mat (run GAVDNet_Run_Detector.m first if absent)
+audioSourceFolder            = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Data Backup\Chagos_DGS\Test Data\2007subset"; % WAV files referenced by raw results + adjudicated FPs
+groundtruthPath              = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Data Backup\Chagos_DGS\Test Data\2007subset\test_dataset_detection_list.mat";                                 % or .txt for SORP
 gtFormat                     = 'CTBTO';                                                                                                      % 'CTBTO' | 'SORP'
 adjudicatedDisagreementsPath = "C:\Users\z5439673\OneDrive - UNSW\H0419778\GAVDNet Data Backup\GAVDNet Data for Publication\Post-Adjudication Results\CPBW_DiegoGarciaSouth_2007_ADJUDICATED\detector_vs_GT_disagreements_07-Jul-2025_08-57-43.mat";
 outputFolder                 = "C:\Users\z5439673\Git\GAVDNet\PostProc Tuning\ExcludeChorus";                                                % a per-run timestamped subfolder is created beneath this
@@ -141,8 +141,7 @@ MT_sweep_values              = [0.10, 0.30, 0.50];
 AEAVD                        = 0;     % fixed; AEAVD=1 is expensive
 
 % --- Operating-point selector ---
-% Aligns with user priority: minimise FP first (precisionFloor), then
-% maximise recall.
+% Optimise to minimise FP first (ie, achieve > precisionFloor), then maximise recall.
 precisionFloor               = 0.95;
 
 % --- Performance ---
@@ -159,7 +158,7 @@ maxDetectionsPerCombo        = 30000; % combos producing more flat detections
                                       % without this guard.
 
 % --- Output options ---
-saveFullDiagnostics          = false; % save per-combo augmented disagreement
+saveFullDiagnostics          = true; % save per-combo augmented disagreement
                                       % struct (large; off by default)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -696,12 +695,18 @@ function row = doOneCombo(c, currentAT, currentDT, currentLT, currentMT, ...
     % Pure counts of each analyst-decision category among the new combo's
     % FPs, plus the count that became TP under the active logic. Naming is
     % logic-neutral; interpret via the decisionLogic in the summary file.
-    decs = {comboDisagreements.falsePositives.analystDecision};
-    nUnknownFPs                  = sum(strcmp(decs, 'Unknown'));
-    nDiscreteInherited           = sum(strcmp(decs, 'DiscreteCallsPresent'));
-    nChorusInherited             = sum(strcmp(decs, 'ChorusPresent'));
-    nDiscretePlusChorusInherited = sum(strcmp(decs, 'DiscreteCallsChorusPresent'));
-    nNoCallInherited             = sum(strcmp(decs, 'CallChorusAbsent'));
+    %
+    % The original adjudicated FPs store analystDecision as a MATLAB string
+    % scalar; inheritAdjudication writes 'Unknown' as a char. The mixed
+    % cell that results would silently return 0 for every strcmp against a
+    % char literal. string() unwraps both into a string array so == works
+    % element-wise.
+    decs = string({comboDisagreements.falsePositives.analystDecision});
+    nUnknownFPs                  = sum(decs == "Unknown");
+    nDiscreteInherited           = sum(decs == "DiscreteCallsPresent");
+    nChorusInherited             = sum(decs == "ChorusPresent");
+    nDiscretePlusChorusInherited = sum(decs == "DiscreteCallsChorusPresent");
+    nNoCallInherited             = sum(decs == "CallChorusAbsent");
     nInheritedFPs_to_TP          = sum(FP_to_TP);
 
     % --- Step 8: Build the result row ------------------------------------
