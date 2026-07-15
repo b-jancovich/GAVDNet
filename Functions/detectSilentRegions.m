@@ -42,18 +42,23 @@ windowDuration = 0.02; % 20 ms window (typical for speech/audio analysis)
 windowSamples = round(windowDuration * fs);
 hopSamples = round(windowSamples / 2); % 50% overlap
 
-% Calculate RMS values using sliding window
+% Calculate RMS values using sliding window.
+% Vectorised replacement for the previous per-window for-loop. buffer()
+% with 'nodelay' places frame 1 at sample 1 and each subsequent frame
+% hopSamples later, i.e. frame k spans samples
+% ((k-1)*hopSamples + 1) : ((k-1)*hopSamples + windowSamples) - exactly
+% the windows the loop indexed. buffer() zero-pads a trailing partial
+% frame, so trimming to numWindows columns discards it. The per-window
+% squaring/mean is done in the input's native class (as before) and the
+% result stored as double to match the previous preallocation, so the
+% RMS values are identical to the loop's.
 numWindows = floor((length(audioIn) - windowSamples) / hopSamples) + 1;
-rmsValues = zeros(numWindows, 1);
-
-for i = 1:numWindows
-    startIdx = (i-1) * hopSamples + 1;
-    endIdx = startIdx + windowSamples - 1;
-
-    if endIdx <= length(audioIn)
-        windowData = audioIn(startIdx:endIdx);
-        rmsValues(i) = sqrt(mean(windowData.^2));
-    end
+if numWindows < 1
+    rmsValues = zeros(0, 1);
+else
+    frames = buffer(audioIn, windowSamples, windowSamples - hopSamples, 'nodelay');
+    frames = cast(frames(:, 1:numWindows), 'like', audioIn);
+    rmsValues = double(sqrt(mean(frames.^2, 1)).');
 end
 
 % Remove any zero RMS values before calculating statistics

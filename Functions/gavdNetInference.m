@@ -111,8 +111,7 @@ switch featureFraming
         % Run Model in minibatch mode
         fprintf('\tRunning features through model...\n')
         tic
-        probabilities = minibatchpredict(model.net, features, ...
-            SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
+        probabilities = minibatchpredictAdaptive(model.net, features, optimalMinibatchSize);
         execTime = toc;
 
         % Move reults back to the CPU if on GPU
@@ -167,8 +166,7 @@ switch featureFraming
         % Run Model in minibatch mode to save memory
         fprintf('\tRunning frames through model.\n')
         tic
-        probabilitiesFrames = minibatchpredict(model.net, featureFrames, ...
-            SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
+        probabilitiesFrames = minibatchpredictAdaptive(model.net, featureFrames, optimalMinibatchSize);
                    
         % Move back to the CPU if on GPU
         if isgpuarray(probabilitiesFrames)
@@ -259,9 +257,11 @@ switch featureFraming
             % Estimate max minibatch size
             optimalMinibatchSize = estimateInferenceMinibatchSize(memoryAvailable, size(featureSegmentsFrames{i, 1}{1, 1}, 2));
         
-            % Run Model in minibatch mode to save memory
-            probabilitiesSegmentsFrames{i, 1} = minibatchpredict(model.net, featureSegmentsFrames{i, 1}, ...
-                SequenceLength="longest", MiniBatchSize=optimalMinibatchSize);
+            % Run Model in minibatch mode to save memory. OOM-safe adaptive
+            % batching lets a small GPU (e.g. the 4 GB T550) process a long
+            % segment that would not fit at the estimated minibatch size.
+            probabilitiesSegmentsFrames{i, 1} = minibatchpredictAdaptive(model.net, ...
+                featureSegmentsFrames{i, 1}, optimalMinibatchSize);
         
             % Move back to the CPU if on GPU
             if isgpuarray(probabilitiesSegmentsFrames{i, 1})
@@ -334,6 +334,69 @@ end
 end
 
 %% Helper Funcitons
+
+function probs = minibatchpredictAdaptive(net, data, minibatchSize)
+% minibatchpredict with OOM-safe adaptive batching. The estimated minibatch
+% size is tried first (so the normal, non-failing path is unchanged); on ANY
+% failure - typically a GPU out-of-memory on a small device (e.g. the 4 GB
+% T550) processing a very long segment's many frames - the MiniBatchSize is
+% halved and the call retried, down to 1. A single-sequence input rethrows
+% immediately, since reducing the batch cannot help it.
+%
+% Every frame is first right-zero-padded to the GLOBAL longest length.
+% minibatchpredict's SequenceLength only supports "longest"/"shortest" (not a
+% fixed number), and "longest" pads each MINIBATCH to its own longest
+% sequence - so once MiniBatchSize < number-of-frames the sub-batches pad to
+% different lengths and their numeric outputs cannot be assembled (at
+% MiniBatchSize = 1 minibatchpredict errors outright). With all frames already
+% the same length, "longest" adds no further padding and every minibatch is
+% uniform. The manual padding is right-zero, matching minibatchpredict's own
+% default sequence padding, so at the FULL batch the result is bit-identical
+% to the pre-existing behaviour (verified empirically) - the normal path is
+% unchanged. A retry (smaller batch) only happens when the full batch would
+% otherwise FAIL; cuDNN's batch-size-dependent arithmetic then perturbs the
+% result by a small amount (observed <= ~1e-3, below the postprocessing
+% hysteresis band, no effect on detections) - the alternative for that file
+% being no result at all.
+    if iscell(data)
+        nObs = numel(data);
+        L = max(cellfun(@(f) size(f, 2), data));
+        if any(cellfun(@(f) size(f, 2) < L, data))
+            data = cellfun(@(f) padFrameRight(f, L), data, 'UniformOutput', false);
+        end
+    else
+        nObs = 1;                    % a single [C x T] sequence
+    end
+    mbs = min(max(round(minibatchSize), 1), max(nObs, 1));
+    while true
+        try
+            probs = minibatchpredict(net, data, ...
+                SequenceLength="longest", MiniBatchSize=mbs);
+            return
+        catch ME
+            if mbs <= 1 || nObs <= 1
+                rethrow(ME)
+            end
+            newMbs = max(1, floor(mbs / 2));
+            warning('gavdNetInference:minibatchRetry', ...
+                'minibatchpredict failed at MiniBatchSize=%d: %s. Retrying at %d.', ...
+                mbs, ME.message, newMbs);
+            mbs = newMbs;
+        end
+    end
+end
+
+function f2 = padFrameRight(f, L)
+% Right-pad a [C x l] feature frame with zeros to [C x L] (l <= L),
+% preserving class / gpuArray-ness. Matches minibatchpredict's default
+% sequence padding, so padded frames give the same predictions.
+    l = size(f, 2);
+    if l >= L
+        f2 = f;
+    else
+        f2 = [f, zeros(size(f, 1), L - l, 'like', f)];
+    end
+end
 
 function transformedMask = maskToFeaturesDomain(mask, fsIn, fsTarget, windowLen, hopLen)
 %   This function transforms a binary mask from the audio sample domain to

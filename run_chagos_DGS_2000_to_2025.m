@@ -31,8 +31,12 @@
 %   detector_results_postprocessed_<year>.mat       (final detections, first run)
 %   detector_results_postprocessed_<year>_<ts>.mat  (re-runs with different postproc settings)
 %   detector_inference_log_<year>_<ts>.txt          (diary log)
-%   %TEMP%\GAVDNet\detector_raw_partial_<year>.mat  (periodic checkpoint, local SSD,
-%                                                    deleted on year completion)
+%   %TEMP%\GAVDNet\detector_raw_partial_<year>_part<K>.mat + _manifest.mat
+%                                                   (sharded periodic checkpoint
+%                                                    on local SSD, deleted on
+%                                                    year completion; _gpuA /
+%                                                    _gpuB variants in dual-GPU
+%                                                    mode)
 %
 % The script is interruptible and restartable in three stages:
 %   * On launch, every existing detector_results_postprocessed_<year>*.mat
@@ -44,21 +48,30 @@
 %     postproc output is saved to detector_results_postprocessed_<year>.mat
 %     if that name is free, otherwise to a _<ts>-suffixed filename so the
 %     prior run's output is preserved.
-%   * Else, if %TEMP%\GAVDNet\detector_raw_partial_<year>.mat exists AND
-%     its saved featureFraming / frameStandardization / channel-1 file
-%     list match the current run, inference resumes from the next
-%     un-processed file. Mismatched partial caches are discarded with a
-%     warning. The partial cache is flushed every partialCacheEveryN
-%     files (default 100) and deleted once the full raw .mat is saved.
-%     A legacy partial cache at the pre-2026-05-12 on-OneDrive location
-%     is auto-migrated to %TEMP% on first encounter.
+%   * Else, if a partial cache for the year exists in %TEMP%\GAVDNet\ AND its
+%     saved featureFraming / frameStandardization / channel-1 file list match
+%     the current run, inference resumes from the next un-processed file. The
+%     cache is sharded (detector_raw_partial_<year>_part<K>.mat plus a small
+%     _manifest.mat) and flushed every partialCacheEveryN files (default 250);
+%     only the current shard is rewritten each flush. A legacy single-file
+%     detector_raw_partial_<year>.mat (e.g. an in-flight pre-sharding cache) is
+%     read and migrated to the sharded format on first resume. Mismatched or
+%     incomplete caches are discarded with a warning. In dual-GPU mode each
+%     worker keeps its own _gpuA / _gpuB cache and resumes independently. All
+%     caches are deleted once the full raw .mat is saved.
 % To force a year's inference to re-run, delete its raw .mat as well.
 %
 % eGPU stability mitigations (Thunderbolt RTX 4090 + internal T550 fallback):
-%   * Periodic partial cache (every partialCacheEveryN files, default 100)
-%     written to local SSD under %TEMP%\GAVDNet\. Worst case crash loss
-%     is partialCacheEveryN - 1 files; the cache lives off OneDrive so
-%     the per-flush write does not incur sync-agent stalls.
+%   * Sharded periodic partial cache (every partialCacheEveryN files,
+%     default 250) written to local SSD under %TEMP%\GAVDNet\. Only the
+%     current shard is rewritten per flush, so checkpoint cost stays bounded
+%     no matter how far into the year the run is. Worst case crash loss is
+%     partialCacheEveryN - 1 files; the cache lives off OneDrive so the
+%     per-flush write does not incur sync-agent stalls.
+%   * The GPU context reset (wait+reset) is throttled to every gpuResetEveryN
+%     files (default 50) rather than every file - a full context reset over
+%     the Thunderbolt link is expensive. The cheap per-file AvailableMemory
+%     read still runs every file, and the failure paths still reset on error.
 %   * Year-start GPU health check via Functions/gpuHealthCheck: small
 %     sentinel computation + 3-iter 200 MB H<->D throughput probe. Logs
 %     sentinel status, available memory, mean/std/min throughput. Warns
@@ -76,9 +89,21 @@
 %   * Per-file GPU AvailableMemory is logged before each inference so
 %     leaks / fragmentation trends are visible in the diary.
 %
-% This script assumes a single MATLAB instance owns the eGPU at any one
-% time. Launching a second MATLAB process that also creates a CUDA context
-% on the same GPU has been observed to destabilise the device.
+% Optional speed features (see the USER INPUT block and DUALGPU_NOTES.md):
+%   * enableShortFileSkip - skip, before reading, files too short to contain a
+%     detection that survives postprocessing (default off; a scientifically-
+%     neutral cleanup for truncated / degenerate files).
+%   * enableDualGpu - process each year's remaining files concurrently on two
+%     GPUs, routed by length (largest files to the primary, smallest to the
+%     secondary; see gpuPrimaryFileFraction), each worker pinned to a distinct
+%     GPU with its own cache and merged at the end (default off; the serial
+%     single-GPU path is unchanged and is the tested fallback).
+%
+% This script assumes a single MATLAB instance owns each GPU at any one time.
+% A second CUDA context on the SAME GPU has been observed to destabilise the
+% eGPU, so the dual-GPU mode pins each worker to a DISTINCT GPU and releases
+% the client's GPU context first. Do not launch a second MATLAB that also
+% uses these GPUs.
 %
 % Ben Jancovich, 2025
 % Centre for Marine Science and Innovation
@@ -128,12 +153,90 @@ maxConsecGpuFailures = 3;
 % (warning only - does not trigger fallback on its own).
 healthCheckThroughputMin = 1.5;
 
-% Per-file partial cache (detector_raw_partial_<year>.mat) is flushed to
-% disk every this many files. The cache lives in %TEMP%\GAVDNet\ (local
-% SSD) rather than inferenceOutputPath, so OneDrive sync never sees it.
-% Worst case crash loss = partialCacheEveryN - 1 files. The full raw
-% cache is always written at year completion regardless of this setting.
+% Partial cache is flushed to disk every this many files. The cache lives
+% in %TEMP%\GAVDNet\ (local SSD) rather than inferenceOutputPath, so
+% OneDrive sync never sees it. Worst case crash loss = partialCacheEveryN
+% - 1 files. The full raw cache is always written at year completion
+% regardless of this setting.
 partialCacheEveryN = 250;
+
+% The partial cache is stored as fixed-size shards
+% (detector_raw_partial_<year>_part<K>.mat) plus a small manifest, so each
+% checkpoint only rewrites the current shard (<= cacheShardSize entries)
+% instead of the whole, ever-growing results array. This bounds checkpoint
+% write cost to O(cacheShardSize) rather than O(files processed so far).
+% cacheShardSize is snapped up to a whole multiple of partialCacheEveryN at
+% setup so every shard boundary coincides with a checkpoint. A legacy
+% single-file detector_raw_partial_<year>.mat (e.g. an in-flight 2006
+% cache) is still read on resume for backward compatibility.
+cacheShardSize = 2000;
+
+% A full wait+reset(gpuDevice) tears down and rebuilds the CUDA context to
+% clear accumulated VRAM fragmentation / leaks. Over the Thunderbolt eGPU
+% link this is expensive, so it is throttled to run once every this many
+% files (a count of files, not a duration), plus on the first file of the
+% run and immediately after any inference failure. The cheap per-file
+% AvailableMemory read is unaffected and still runs every file. Set to 1 to
+% restore the original "reset before every file" behaviour. Set to 50 (from
+% an earlier 250) to refresh the Thunderbolt eGPU link more often, hedging
+% the observed upward drift in per-file inference time on long sustained
+% runs while still saving ~98% of the old every-file reset cost.
+gpuResetEveryN = 50;
+
+% --- Short-file skip (optional, default OFF) ---
+% When enabled, an audio file whose duration is below the skip threshold is
+% marked as skipped and NOT read or run through the model. This avoids the
+% per-file overhead on files that are provably too short to yield any
+% detection. It is a robustness / cleanup feature for truncated or
+% degenerate files - it does NOT meaningfully speed up years made of many
+% ordinary short recordings, whose durations exceed the threshold.
+% DEFAULT OFF so production behaviour is unchanged unless explicitly opted
+% into. ENABLED for this production run: it is scientifically neutral (a file
+% shorter than LT cannot yield a detection that survives postprocessing) and
+% it also avoids the sub-second files that otherwise fail inference 3x with
+% two 10 s retry pauses each. Set back to false to restore the old behaviour.
+enableShortFileSkip = true;
+
+% Skip threshold in seconds. Leave EMPTY ([]) to auto-derive the
+% scientifically-safe value = postProcOptions.LT (the postprocessing length
+% threshold, = meanTargetCallDuration * LT_scaler). A file shorter than LT
+% cannot produce a detection that survives postprocessing, regardless of
+% content, so skipping it changes no scientific result. WARNING: setting an
+% explicit value GREATER than LT risks silently discarding files that could
+% contain a real, detectable call - keep any override <= LT.
+shortFileSkipDurationSec = [];
+
+% --- Dual-GPU concurrent inference (optional; default OFF) ---
+% When enabled AND at least two GPUs are available, a year's remaining files
+% are split into two contiguous ranges processed CONCURRENTLY by two parallel
+% workers, each pinned to a distinct GPU (the two largest in the fallback
+% chain, e.g. RTX 4090 for the primary share and T550 for the secondary).
+% Each worker runs the normal per-file pipeline over its range into its own
+% worker-scoped partial cache (detector_raw_partial_<year>_gpuA/_gpuB), and
+% the two result ranges are merged with the preloaded/cached results before
+% postprocessing. The single-GPU serial path is used (unchanged) when this is
+% false or fewer than two GPUs are present.
+% IMPORTANT (eGPU): each worker holds a CUDA context on its OWN GPU. Validate
+% stability on a small run first - a second context on the Thunderbolt 4090
+% has previously destabilised the link. If unstable, set this false to use
+% the tested serial path.
+enableDualGpu = true;
+
+% Fraction of a year's REMAINING files assigned to the primary GPU
+% (gpuChain(1), the largest / fastest). The remaining files are routed by
+% LENGTH: sorted by size (bytes, a proxy for duration), the primary takes the
+% largest primaryFileFraction of them and the secondary takes the smallest
+% rest. This keeps long single-segment files on the high-memory primary (full
+% batch size) and gives the low-memory secondary the short files it processes
+% efficiently, while still handing it some files in a mostly-long year. A
+% scalar in (0,1); e.g. 0.6 sends the largest 60% of the remaining files to
+% the primary and the smallest 40% to the secondary. The split is clamped so
+% the secondary always gets at least one (the shortest) file. Because the
+% split is derived only from the fixed file sizes and this fraction, the two
+% workers' ranges are identical across restarts, so each worker resumes its
+% own cache correctly. Tune from the per-worker throughput logged at year end.
+% Only used when enableDualGpu is true.
+gpuPrimaryFileFraction = 0.6;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -185,14 +288,40 @@ postProcOptions.LT = model.dataSynthesisParams.meanTargetCallDuration .* ...
 % training dataset, with a +20% tolerance.
 postProcOptions.maxTargetCallDuration = model.dataSynthesisParams.maxTargetCallDuration * 1.2;
 
+% Resolve the short-file skip threshold (A3, see USER INPUT). Auto value is
+% postProcOptions.LT: a file shorter than LT cannot yield a detection that
+% survives postprocessing. Computed once here because model.LT_scaler and
+% meanTargetCallDuration are constant for the whole run. Held across years
+% by the clearvars -except allowlist at the end of the year loop.
+if isempty(shortFileSkipDurationSec)
+    shortFileSkipThreshSec = postProcOptions.LT;
+else
+    shortFileSkipThreshSec = shortFileSkipDurationSec;
+end
+if enableShortFileSkip
+    fprintf('Short-file skip ENABLED: files shorter than %.3f s will be skipped before read.\n', ...
+        shortFileSkipThreshSec)
+else
+    fprintf('Short-file skip disabled (all files processed regardless of duration).\n')
+end
+
+% Snap cacheShardSize up to a whole multiple of partialCacheEveryN so every
+% shard boundary lands on a checkpoint (the sharded-cache writer relies on
+% this to finalise each completed shard exactly once). Held across years by
+% the clearvars -except allowlist.
+cacheShardSize = max(partialCacheEveryN, ...
+    ceil(cacheShardSize / partialCacheEveryN) * partialCacheEveryN);
+fprintf('Partial cache shard size: %d files (checkpoint every %d files).\n', ...
+    cacheShardSize, partialCacheEveryN)
+
 % Set up for GPU or CPU processing (one device for the whole run):
 [useGPU, gpuDeviceID, ~, bytesAvailable] = gpuConfig();
 
 % Build the GPU fallback chain. Entries are sorted by TotalMemory
 % descending so chain(1) is the largest / primary GPU (RTX 4090 eGPU on
 % this machine) and chain(end) is the smallest (T550 internal). The
-% stepGpuFallback helper at the bottom of this script walks this chain
-% on consecutive inference failures, eventually dropping to CPU.
+% Functions/stepGpuFallback helper walks this chain on consecutive inference
+% failures, eventually dropping to CPU.
 numGPUs = gpuDeviceCount("available");
 if numGPUs > 0
     gpuChain = struct('deviceID', cell(1, numGPUs), ...
@@ -288,11 +417,7 @@ fprintf('Found %d year subfolders: %s\n', numel(years), ...
 
 %% Main loop: per year
 
-
-
-
-years = 2019:2025;
-
+years = 2001:2018;
 
 for yearIdx = 1:numel(years)
     year = years(yearIdx);
@@ -417,33 +542,24 @@ for yearIdx = 1:numel(years)
         results = struct([]);
         startFileIdx = 1;
 
-        % Attempt to resume from a partial cache if one exists.
-        if exist(saveNamePathPartial, 'file')
-            try
-                partial = load(saveNamePathPartial);
-                currentChFileNames = {chFiles.name};
-                settingsMatch = isequaln(partial.featureFraming, featureFraming) && ...
-                    isequaln(partial.frameStandardization, frameStandardization);
-                filesMatch = isequal(numel(partial.chFileNames), numel(currentChFileNames)) && ...
-                    all(strcmp(partial.chFileNames(:), currentChFileNames(:)));
-                if settingsMatch && filesMatch
-                    results = partial.results;
-                    startFileIdx = partial.nextFileIdx;
-                    fprintf(['Resuming year %d from file %d/%d (loaded %d ' ...
-                        'cached entries from partial cache).\n'], ...
-                        year, startFileIdx, numel(chFilePaths), numel(results))
-                else
-                    warning(['Partial cache %s does not match current ' ...
-                        'settings / file list. Starting year from file 1.'], ...
-                        saveNamePathPartial)
-                end
-                clear partial
-            catch ME
-                warning(['Could not load partial cache %s: %s. ' ...
-                    'Starting year from file 1.'], ...
-                    saveNamePathPartial, ME.message)
-            end
+        % Attempt to resume from a partial cache if one exists. Uses the
+        % sharded format (manifest + part files); falls back to a legacy
+        % single-file cache (e.g. an in-flight 2006
+        % detector_raw_partial_2006.mat) for backward compatibility. Any
+        % settings / file-list mismatch, missing shard, or unreadable file is
+        % reported inside the loader, which then returns isValidResume =
+        % false so the year restarts from file 1.
+        [resumedResults, resumedStartIdx, isValidResume] = ...
+            loadResultsFromShardedCache(saveNamePathPartial, cacheShardSize, ...
+            featureFraming, frameStandardization, {chFiles.name});
+        if isValidResume
+            results = resumedResults;
+            startFileIdx = resumedStartIdx;
+            fprintf(['Resuming year %d from file %d/%d (loaded %d cached ' ...
+                'entries from partial cache).\n'], ...
+                year, startFileIdx, numel(chFilePaths), numel(results))
         end
+        clear resumedResults
 
         % Year-start GPU health check (sentinel + small throughput probe).
         % Skipped if we are already on CPU (no GPU to probe). A failed
@@ -499,206 +615,93 @@ for yearIdx = 1:numel(years)
             fprintf('Running year %d on CPU (no GPU health check).\n', year)
         end
 
-        % Per-year consecutive-failure counter for fallback decision.
-        % Resets at year start so a fallback from a prior year does not
-        % carry over to the new device.
-        consecGpuFailures = 0;
+        % Assemble the option and device-state structs passed to the shared
+        % per-file inference loop (Functions/runInferenceFileLoop), used by
+        % both the serial path and each dual-GPU worker. This replaces the
+        % previously-inline per-file loop; the logic is unchanged.
+        opts = struct( ...
+            'featureFraming', featureFraming, ...
+            'frameStandardization', frameStandardization, ...
+            'minSilenceDuration', minSilenceDuration, ...
+            'plotting', plotting, ...
+            'activationThreshold', postProcOptions.AT, ...
+            'windowDur', windowDur, ...
+            'maxInferenceRetries', maxInferenceRetries, ...
+            'maxConsecGpuFailures', maxConsecGpuFailures, ...
+            'gpuResetEveryN', gpuResetEveryN, ...
+            'enableShortFileSkip', enableShortFileSkip, ...
+            'shortFileSkipThreshSec', shortFileSkipThreshSec, ...
+            'partialCacheEveryN', partialCacheEveryN, ...
+            'cacheShardSize', cacheShardSize, ...
+            'progressLabel', '');
 
-        % Run inference on each remaining un-processed file.
-        for fileIdx = startFileIdx:numel(chFilePaths)
-            filePath = chFilePaths{fileIdx};
-            [~, fileName, fileExt] = fileparts(filePath);
+        % Device state (fallback chain, current device, counters). The
+        % per-year consecutive-failure counter resets at year start so a
+        % fallback from a prior year does not carry over to the new device.
+        deviceState = struct( ...
+            'useGPU', useGPU, ...
+            'gpuDeviceID', gpuDeviceID, ...
+            'bytesAvailable', bytesAvailable, ...
+            'gpuChain', gpuChain, ...
+            'currentGpuChainIdx', currentGpuChainIdx, ...
+            'cpuMemoryBytes', cpuMemoryBytes, ...
+            'consecGpuFailures', 0);
 
-            % Announce start
-            fprintf('Running inference on file %d of %d...\n', fileIdx, numel(chFilePaths))
+        % Choose serial (single GPU / CPU) or dual-GPU concurrent inference.
+        numFilesThisYear = numel(chFilePaths);
+        numRemaining = numFilesThisYear - startFileIdx + 1;
+        useDualGpu = enableDualGpu && useGPU && numel(gpuChain) >= 2 && numRemaining >= 2;
 
-            % Clear GPU memory from previous iteration and refresh the
-            % free-memory snapshot. The initial bytesAvailable from
-            % gpuConfig() can drift over a long run as other processes
-            % consume VRAM (compositor, browser, etc.); on small GPUs an
-            % out-of-date estimate can cause estimateInferenceMinibatchSize
-            % to pick a batch that no longer fits. Per-file VRAM is logged
-            % so leaks / fragmentation trends are visible in the diary.
-            % If the reset itself errors, treat the device as failed and
-            % step the fallback chain immediately.
-            if useGPU
-                try
-                    wait(gpuDevice(gpuDeviceID));
-                    reset(gpuDevice(gpuDeviceID));
-                    bytesAvailable = gpuDevice(gpuDeviceID).AvailableMemory;
-                    fprintf('\tGPU available memory: %.2f GB\n', bytesAvailable / 1e9)
-                catch ME
-                    warning(['Per-file GPU reset failed: %s. Stepping ' ...
-                        'fallback chain.'], ME.message)
-                    [useGPU, gpuDeviceID, bytesAvailable, currentGpuChainIdx, switchedTo] = ...
-                        stepGpuFallback(currentGpuChainIdx, gpuChain, cpuMemoryBytes);
-                    fprintf('\tNow using: %s\n', switchedTo)
-                    consecGpuFailures = 0;
-                end
-            end
+        if useDualGpu
+            % Route the REMAINING files between the two GPUs by LENGTH: sorted
+            % by size (bytes, a proxy for duration), the largest
+            % gpuPrimaryFileFraction of the files go to the primary GPU and the
+            % smallest rest to the secondary. This keeps long single-segment
+            % files on the high-memory primary (full batch size) and gives the
+            % low-memory secondary the short files, while still handing it some
+            % files to do in a mostly-long year. The split depends only on the
+            % fixed file sizes and the fraction, so the two workers' ranges are
+            % identical across restarts and each worker resumes its own
+            % worker-scoped cache. runYearDualGpu runs the two workers
+            % concurrently (each pinned to a distinct GPU) and returns the
+            % merged global results.
+            remainingSizes = [chFiles(startFileIdx:numFilesThisYear).bytes];
+            remainingGlobalIdx = startFileIdx:numFilesThisYear;
+            [aRange, bRange, splitInfo] = planLengthRoutedSplit(...
+                remainingSizes, remainingGlobalIdx, gpuPrimaryFileFraction);
+            fprintf(['Length-routed split: primary (%s) gets %d files / %.2f GB ' ...
+                '(largest files); secondary (%s) gets %d files / %.2f GB ' ...
+                '(smallest files).\n'], ...
+                gpuChain(1).Name, splitInfo.nPrimary, splitInfo.bytesPrimary / 1e9, ...
+                gpuChain(2).Name, splitInfo.nSecondary, splitInfo.bytesSecondary / 1e9)
 
-            % Read audio file (retries with 60/180/300 s waits, then 300 s cooldown).
-            fprintf('\tReading audio...\n')
-            [audioIn, sampleRate, readErr] = audioReadWithRetry(filePath);
-            results(fileIdx).fileName = [fileName, fileExt];
-            if isempty(audioIn)
-                warning('\tCould not read file %d (%s%s) after retries: %s. Skipping...\n', ...
-                    fileIdx, fileName, fileExt, readErr)
-                results(fileIdx).failComment = sprintf( ...
-                    'Read failed after retries: %s', readErr);
-                if mod(fileIdx, partialCacheEveryN) == 0
-                    saveResultsToPartialCache(saveNamePathPartial, results, fileIdx, ...
-                        featureFraming, frameStandardization, {chFiles.name});
-                end
-                continue
-            end
-
-            % Write filename, Fs and file info to detections struct
-            results(fileIdx).fileFs = sampleRate;
-            results(fileIdx).fileSamps = length(audioIn);
-            results(fileIdx).fileDuration = results(fileIdx).fileSamps / results(fileIdx).fileFs;
-            results(fileIdx).probabilities = [];
-
-            % Extract datetime from filename
-            fprintf('\tExtracting datetime stamp from audio filename...\n')
-            results(fileIdx).fileStartDateTime = extractDatetimeFromFilename(filePath, 'datetime');
-
-            % Skip this file if it's name doesn't contain a valid start date
-            if isempty(results(fileIdx).fileStartDateTime) ||...
-                    isnat(results(fileIdx).fileStartDateTime)
-                warning('\tCould not extract datetime from filename: %s. Skipping...\n',...
-                    results(fileIdx).fileName)
-                results(fileIdx).failComment = 'Could not read valid recording start data-time from filename';
-                if mod(fileIdx, partialCacheEveryN) == 0
-                    saveResultsToPartialCache(saveNamePathPartial, results, fileIdx, ...
-                        featureFraming, frameStandardization, {chFiles.name});
-                end
-                continue
-            end
-
-            % Skip this file if it doesn't contain valid audio
-            if isValidAudio(audioIn) == false
-                warning('\tFile %s did not contain valid audio. Skipping...\n', results(fileIdx).fileName)
-                results(fileIdx).failComment = 'Could not read valid audio from file';
-                if mod(fileIdx, partialCacheEveryN) == 0
-                    saveResultsToPartialCache(saveNamePathPartial, results, fileIdx, ...
-                        featureFraming, frameStandardization, {chFiles.name});
-                end
-                continue
-            end
-
-            % NOTE: previously a sample-domain datetime vector was
-            % constructed and stored on every results entry; for 4-hour
-            % files at 250 Hz that was ~58 MB per file, which accumulated
-            % to >100 GB across a year and caused host-RAM OOMs in long
-            % runs. Event datetimes are now derived in postprocessing
-            % directly from fileStartDateTime + sample index / fileFs,
-            % which only needs the three scalars already stored above.
-
-            % Run preprocessing and inference with retry on transient GPU
-            % errors. Each retry resets the GPU and pauses briefly before
-            % the next attempt. Files that fail all retries are marked
-            % with failComment; the consecutive-failure tracker below
-            % decides whether to fall back to the next device.
-            inferenceSucceeded = false;
-            lastInferenceErr = '';
-            execTime = NaN;
-            numAudioSegments = NaN;
-            for attempt = 1:maxInferenceRetries
-                try
-                    [results(fileIdx).probabilities, ~, execTime, ...
-                        results(fileIdx).silenceMask, numAudioSegments] = gavdNetInference(...
-                        audioIn, sampleRate, model, bytesAvailable, ...
-                        featureFraming, frameStandardization, minSilenceDuration, plotting);
-                    inferenceSucceeded = true;
-                    consecGpuFailures = 0;
-                    break
-                catch ME
-                    lastInferenceErr = ME.message;
-                    warning('Inference attempt %d/%d failed for %s: %s', ...
-                        attempt, maxInferenceRetries, [fileName, fileExt], ME.message)
-                    if useGPU
-                        try
-                            wait(gpuDevice(gpuDeviceID));
-                            reset(gpuDevice(gpuDeviceID));
-                            bytesAvailable = gpuDevice(gpuDeviceID).AvailableMemory;
-                        catch resetME
-                            warning('\tGPU reset between inference retries also failed: %s', ...
-                                resetME.message)
-                        end
-                    end
-                    if attempt < maxInferenceRetries
-                        pause(10);
-                    end
-                end
-            end
-
-            if ~inferenceSucceeded
-                fprintf(['\tInference FAILED after %d attempts. ' ...
-                    'Marking file as failed.\n'], maxInferenceRetries)
-                results(fileIdx).failComment = sprintf( ...
-                    'Inference failed after %d retries: %s', ...
-                    maxInferenceRetries, lastInferenceErr);
-                results(fileIdx).probabilities = [];
-
-                if useGPU
-                    consecGpuFailures = consecGpuFailures + 1;
-                    threshold = currentFailureThreshold(currentGpuChainIdx, maxConsecGpuFailures);
-                    if consecGpuFailures >= threshold
-                        warning(['Inference failed for %d consecutive ' ...
-                            'file(s) on the current device. Stepping ' ...
-                            'fallback chain.'], consecGpuFailures)
-                        [useGPU, gpuDeviceID, bytesAvailable, currentGpuChainIdx, switchedTo] = ...
-                            stepGpuFallback(currentGpuChainIdx, gpuChain, cpuMemoryBytes);
-                        fprintf('\tNow using: %s\n', switchedTo)
-                        consecGpuFailures = 0;
-                    end
-                end
-
-                if mod(fileIdx, partialCacheEveryN) == 0
-                    saveResultsToPartialCache(saveNamePathPartial, results, fileIdx, ...
-                        featureFraming, frameStandardization, {chFiles.name});
-                end
-                continue
-            end
-
-            % Report execution time and seconds of audio with high probability
-            numTimeBinsProbHigh = sum(results(fileIdx).probabilities > postProcOptions.AT);
-            secondsBinsProbHigh = numTimeBinsProbHigh * windowDur;
-            fprintf('\tInference Completed in %.2f seconds\n', execTime)
-            fprintf('\tTotal audio duration: %.2f seconds\n', results(fileIdx).fileDuration)
-            fprintf('\tDuration with raw detection probability > Activation Threshold%%: %.2f seconds.\n\n', secondsBinsProbHigh)
-
-            % Write diagnostic information to the results struct
-            results(fileIdx).probsAllNan = all(isnan(results(fileIdx).probabilities));
-            results(fileIdx).probsAnyNan = any(isnan(results(fileIdx).probabilities));
-            results(fileIdx).audioAllSilence = all(results(fileIdx).silenceMask == true);
-            results(fileIdx).audioAnySilence = any(results(fileIdx).silenceMask == true);
-            results(fileIdx).numSplitAudioSegments = numAudioSegments;
-
-            % Per-file partial cache, throttled to every partialCacheEveryN
-            % files (see USER INPUT). Writing every file is too expensive
-            % once the results array grows past a few tens of MB; throttling
-            % bounds worst-case I/O without giving up crash recovery entirely.
-            if mod(fileIdx, partialCacheEveryN) == 0
-                saveResultsToPartialCache(saveNamePathPartial, results, fileIdx, ...
-                    featureFraming, frameStandardization, {chFiles.name});
-            end
+            results = runYearDualGpu(chFilePaths, {chFiles.name}, aRange, bRange, ...
+                results, model, opts, gpuChain, cpuMemoryBytes, saveNamePathPartial);
+        else
+            % Serial single-device path: process the whole remaining list on
+            % the current device, resuming from startFileIdx.
+            [results, deviceState] = runInferenceFileLoop(chFilePaths, ...
+                {chFiles.name}, startFileIdx, results, model, opts, ...
+                deviceState, saveNamePathPartial);
+            % Persist any device fallback that happened this year into the
+            % run-level device variables (kept across years by clearvars).
+            useGPU             = deviceState.useGPU;
+            gpuDeviceID        = deviceState.gpuDeviceID;
+            bytesAvailable     = deviceState.bytesAvailable;
+            currentGpuChainIdx = deviceState.currentGpuChainIdx;
         end
 
         % Save the output
         save(saveNamePathRaw, 'results', '-v7.3')
         fprintf('Year %d: saved %d raw results to %s\n', year, length(results), saveNamePathRaw)
 
-        % Delete the partial cache now that the full raw cache is safely on disk.
-        if exist(saveNamePathPartial, 'file')
-            try
-                delete(saveNamePathPartial)
-            catch ME
-                warning('Could not delete partial cache %s: %s', ...
-                    saveNamePathPartial, ME.message)
-            end
-        end
+        % Delete the partial cache(s) now that the full raw cache is safely
+        % on disk - the serial cache (manifest, every shard, and any legacy
+        % single file) plus the two dual-GPU worker caches if they exist.
+        deletePartialCache(saveNamePathPartial)
+        [pcDir, pcName, ~] = fileparts(saveNamePathPartial);
+        deletePartialCache(fullfile(pcDir, [pcName, '_gpuA.mat']))
+        deletePartialCache(fullfile(pcDir, [pcName, '_gpuB.mat']))
     end
 
     %% Reload and post-process the raw predictions to get detections and confidence scores.
@@ -788,124 +791,10 @@ for yearIdx = 1:numel(years)
         model postProcOptions useGPU gpuDeviceID bytesAvailable ...
         gpuChain currentGpuChainIdx cpuMemoryBytes ...
         maxInferenceRetries maxConsecGpuFailures healthCheckThroughputMin ...
-        partialCacheDir partialCacheEveryN ...
+        partialCacheDir partialCacheEveryN gpuResetEveryN cacheShardSize ...
+        enableShortFileSkip shortFileSkipDurationSec shortFileSkipThreshSec ...
+        enableDualGpu gpuPrimaryFileFraction ...
         years yearIdx ...
         featureFraming frameStandardization minSilenceDuration windowDur
 
-end
-
-%% Local functions (eGPU stability mitigations)
-
-function saveResultsToPartialCache(savePath, results, lastCompletedIdx, ...
-        featureFraming, frameStandardization, chFileNames)
-% Write the per-file partial cache used by the resume-on-restart logic.
-%
-% Inputs (mirroring the script's loop-local variables):
-%   savePath            - Full path to detector_raw_partial_<year>.mat
-%   results             - Current results struct array
-%   lastCompletedIdx    - Index of the file whose iteration just ended.
-%                         nextFileIdx in the cache is set to this + 1.
-%   featureFraming      - To verify settings on resume
-%   frameStandardization - To verify settings on resume
-%   chFileNames         - cellstr {chFiles.name} for this year, used on
-%                         resume to ensure the file list hasn't changed
-%
-% The partial cache is rewritten after every iteration (including ones
-% that ended in `continue` due to read / datetime / inference failure)
-% so a crash never loses more than the current file's work.
-    partialCache.results = results;
-    partialCache.nextFileIdx = lastCompletedIdx + 1;
-    partialCache.featureFraming = featureFraming;
-    partialCache.frameStandardization = frameStandardization;
-    partialCache.chFileNames = chFileNames;
-    try
-        save(savePath, '-struct', 'partialCache', '-v7.3');
-    catch ME
-        warning('Could not write partial cache to %s: %s', savePath, ME.message);
-    end
-end
-
-
-function [useGPU, gpuDeviceID, bytesAvailable, newChainIdx, switchedTo] = ...
-        stepGpuFallback(currentChainIdx, gpuChain, cpuMemoryBytes)
-% Advance one step down the GPU fallback chain after the current device
-% is judged to be failing (e.g. consecGpuFailures >= threshold, or the
-% year-start health check returned 'failed').
-%
-% currentChainIdx convention:
-%   1..N  - index into gpuChain (entries sorted by TotalMemory desc, so 1
-%           is the primary / most-capable GPU)
-%   0     - currently on CPU; no further fallback is possible
-%
-% Transitions:
-%   1..N-1  -> next GPU in chain (try to reset and activate it; if that
-%              also throws, skip straight to CPU)
-%   N       -> CPU (chain exhausted)
-%   0       -> remains CPU
-%
-% Returns the new (useGPU, gpuDeviceID, bytesAvailable, newChainIdx) plus
-% a human-readable description of where we ended up, for logging.
-
-    if currentChainIdx == 0
-        useGPU = false;
-        gpuDeviceID = 0;
-        bytesAvailable = cpuMemoryBytes;
-        newChainIdx = 0;
-        switchedTo = 'CPU (already on CPU; no further fallback)';
-        return
-    end
-
-    % Best-effort release of the failing device's context. The device may
-    % already be unresponsive, which is exactly the situation that
-    % triggered the fallback, so swallow any error here.
-    try
-        wait(gpuDevice(gpuChain(currentChainIdx).deviceID));
-        reset(gpuDevice(gpuChain(currentChainIdx).deviceID));
-    catch
-        % Ignore - device unresponsive
-    end
-
-    if currentChainIdx < numel(gpuChain)
-        % Step to next GPU in chain
-        newChainIdx = currentChainIdx + 1;
-        candidateID = gpuChain(newChainIdx).deviceID;
-        try
-            g = gpuDevice(candidateID);
-            reset(g);
-            useGPU = true;
-            gpuDeviceID = candidateID;
-            bytesAvailable = g.AvailableMemory;
-            switchedTo = sprintf('GPU %d ("%s", %.1f GB free)', ...
-                gpuDeviceID, char(g.Name), bytesAvailable / 1e9);
-        catch ME
-            warning(['Could not activate fallback GPU %d: %s. ' ...
-                'Skipping to CPU.'], candidateID, ME.message)
-            useGPU = false;
-            gpuDeviceID = 0;
-            bytesAvailable = cpuMemoryBytes;
-            newChainIdx = 0;
-            switchedTo = 'CPU (fallback GPU also unavailable)';
-        end
-    else
-        % Chain exhausted - drop to CPU
-        useGPU = false;
-        gpuDeviceID = 0;
-        bytesAvailable = cpuMemoryBytes;
-        newChainIdx = 0;
-        switchedTo = sprintf('CPU (%.1f GB available)', cpuMemoryBytes / 1e9);
-    end
-end
-
-
-function threshold = currentFailureThreshold(currentChainIdx, primaryThreshold)
-% Per-device consecutive-failure threshold before triggering fallback.
-% The primary GPU (chain idx 1) gets the user-configurable threshold; any
-% non-primary GPU gets a single shot before being dropped, per the
-% report's "RTX 4090 -> T550 -> CPU, T550 fails on first file -> CPU"
-% fallback policy.
-    if currentChainIdx == 1
-        threshold = primaryThreshold;
-    else
-        threshold = 1;
-    end
 end
